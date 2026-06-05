@@ -1,0 +1,51 @@
+<activation-routing skill="talos-sre" version="1.0">
+
+  <defaults>
+    <rule>Always run preflight (step-00) first.</rule>
+    <rule>Always ask which cluster (admin@ops, admin@workload-1/2/3) first. No default — refuse anything that isn't a known kube context.</rule>
+    <rule>Show every command before running it. The scripts echo each kubectl/talosctl call; surface them.</rule>
+    <rule>Read-only everywhere except the remediate route, which opens a git PR and never touches the cluster.</rule>
+    <rule>Refuse to proceed outside the /ai-powered-platform-engineering lab checkout.</rule>
+  </defaults>
+
+  <routes>
+
+    <route id="health">
+      <when>health, is the cluster healthy, nodes ready, etcd, control plane, control-plane down, apiserver, is ops healthy, check the cluster, what's wrong with workload-1, cluster status</when>
+      <goal>Read-only health sweep: nodes Ready, etcd quorum, control-plane pods, Talos services.</goal>
+      <steps><step ref="references/steps/step-01-health.md">Run scripts/health.py --cluster {cluster}.</step></steps>
+    </route>
+
+    <route id="reliability">
+      <when>reliability, probes, liveness, readiness, replicas, single replica, HA, PodDisruptionBudget, PDB, resource limits, will this survive a drain, SLO risk</when>
+      <goal>Find reliability gaps in user workloads: missing probes, single-replica/no-PDB, no limits.</goal>
+      <steps><step ref="references/steps/step-02-reliability.md">Run scripts/reliability.py --cluster {cluster}.</step></steps>
+    </route>
+
+    <route id="security">
+      <when>security, security review, drift, privileged, runAsRoot, run as root, hostPath, hostNetwork, NetworkPolicy, netpol, pod security, is this hardened</when>
+      <goal>Scan for security drift: privileged containers, root, host namespaces/paths, missing NetworkPolicies.</goal>
+      <steps><step ref="references/steps/step-03-security.md">Run scripts/security_drift.py --cluster {cluster}.</step></steps>
+    </route>
+
+    <route id="certs">
+      <when>cert, certificate, expiry, expiring, pki, rotate, when will the api break, outage prediction, talos cert, kubeconfig cert</when>
+      <goal>Compute cert days-to-expiry and predict the API outage window.</goal>
+      <steps><step ref="references/steps/step-04-certs.md">Run scripts/certs.py --cluster {cluster} [--threshold-days N].</step></steps>
+    </route>
+
+    <route id="report">
+      <when>report, maturity report, scorecard, score the platform, grade, how mature is this cluster, executive summary, overall health score</when>
+      <goal>Run all read-only capabilities and print a scored platform maturity report.</goal>
+      <steps><step ref="references/steps/step-05-report.md">Run scripts/report.py --cluster {cluster}.</step></steps>
+    </route>
+
+    <route id="remediate">
+      <when>remediate, fix it, open a PR, raise a PR, auto-fix, apply the fix, add a PDB, generate the fix, gitops fix, make it self-heal</when>
+      <goal>Generate a fix manifest and open a PR to the Gitea platform repo; ArgoCD syncs on merge. Dry-run unless --apply.</goal>
+      <steps><step ref="references/steps/step-06-remediate.md">Run scripts/remediate.py --cluster {cluster} --fix {fix} --namespace {ns} --workload {name} [--apply].</step></steps>
+    </route>
+
+  </routes>
+
+</activation-routing>

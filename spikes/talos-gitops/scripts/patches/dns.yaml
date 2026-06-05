@@ -1,0 +1,13 @@
+# Talos machine config patch applied to every node at cluster-create time.
+#
+# WHY: Under the Docker provisioner on OrbStack (macOS arm64) the Talos node's
+# dnsServers list comes up EMPTY, so the node can't resolve registry.k8s.io to
+# pull the etcd image (registry.k8s.io/etcd) — etcd then hangs forever in
+# "Waiting" and the cluster never bootstraps. Pinning explicit nameservers makes
+# every cluster boot deterministically. This is the single hard-won fix of the
+# whole spike; do not remove it.
+machine:
+  network:
+    nameservers:
+      - 8.8.8.8
+      - 1.1.1.1

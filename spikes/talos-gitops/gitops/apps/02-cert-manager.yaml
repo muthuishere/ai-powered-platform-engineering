@@ -1,0 +1,45 @@
+# ApplicationSet: cert-manager on every workload cluster. crds.enabled installs
+# the CRDs as part of the release; ServerSideApply avoids the last-applied
+# annotation size limit that large CRDs would otherwise blow.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: cert-manager
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - clusters:
+        selector:
+          matchLabels:
+            environment: workload
+  template:
+    metadata:
+      name: 'cert-manager-{{.name}}'
+    spec:
+      project: default
+      source:
+        repoURL: https://charts.jetstack.io
+        chart: cert-manager
+        targetRevision: v1.16.2
+        helm:
+          valuesObject:
+            crds:
+              enabled: true
+            resources:
+              requests: {cpu: 20m, memory: 48Mi}
+            webhook:
+              resources:
+                requests: {cpu: 10m, memory: 32Mi}
+            cainjector:
+              resources:
+                requests: {cpu: 10m, memory: 48Mi}
+      destination:
+        server: '{{.server}}'
+        namespace: cert-manager
+      syncPolicy:
+        automated: {prune: true, selfHeal: true}
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true

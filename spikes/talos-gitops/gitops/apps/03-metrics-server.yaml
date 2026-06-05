@@ -1,0 +1,39 @@
+# ApplicationSet: metrics-server on every workload cluster.
+# --kubelet-insecure-tls is required here because Talos kubelets present serving
+# certs that metrics-server won't validate against the cluster CA in this local
+# Docker setup. Fine for a spike; in production you'd wire proper kubelet certs.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: metrics-server
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - clusters:
+        selector:
+          matchLabels:
+            environment: workload
+  template:
+    metadata:
+      name: 'metrics-server-{{.name}}'
+    spec:
+      project: default
+      source:
+        repoURL: https://kubernetes-sigs.github.io/metrics-server
+        chart: metrics-server
+        targetRevision: 3.12.2
+        helm:
+          valuesObject:
+            args:
+              - --kubelet-insecure-tls
+            resources:
+              requests: {cpu: 20m, memory: 48Mi}
+      destination:
+        server: '{{.server}}'
+        namespace: kube-system
+      syncPolicy:
+        automated: {prune: true, selfHeal: true}
+        syncOptions:
+          - ServerSideApply=true
