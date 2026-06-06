@@ -72,7 +72,7 @@ def main() -> None:
             if pdb_ns.get(ns, 0) == 0:
                 f.add(f"{ns}/{name}: single replica AND no PodDisruptionBudget (node drain = outage)",
                       severity="high",
-                      evidence=f"{obj} replicas<=1 and 0 PDBs in ns {ns}",
+                      evidence=f"{kind}/{name} replicas<=1 and 0 PDBs in ns {ns}",
                       proposed_fix="add a PodDisruptionBudget (minAvailable: 1) — see remediate.py --fix missing-pdb")
             else:
                 f.ok(f"single replica but a PDB exists in {ns} (verify it selects this app)")
