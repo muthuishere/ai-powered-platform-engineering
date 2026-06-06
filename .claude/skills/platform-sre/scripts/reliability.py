@@ -64,13 +64,16 @@ def main() -> None:
         else:
             f.ok("readinessProbe present")
         if not all((ct.get("resources", {}).get("limits")) for ct in containers):
-            f.add(f"{ns}/{name}: missing resource limits on a container")
+            f.add(f"{ns}/{name}: missing resource limits on a container", severity="low")
         else:
             f.ok("resource limits present")
 
         if replicas <= 1:
             if pdb_ns.get(ns, 0) == 0:
-                f.add(f"{ns}/{name}: single replica AND no PodDisruptionBudget (node drain = outage)")
+                f.add(f"{ns}/{name}: single replica AND no PodDisruptionBudget (node drain = outage)",
+                      severity="high",
+                      evidence=f"{obj} replicas<=1 and 0 PDBs in ns {ns}",
+                      proposed_fix="add a PodDisruptionBudget (minAvailable: 1) — see remediate.py --fix missing-pdb")
             else:
                 f.ok(f"single replica but a PDB exists in {ns} (verify it selects this app)")
         else:

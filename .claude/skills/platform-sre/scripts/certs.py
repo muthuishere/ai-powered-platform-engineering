@@ -65,7 +65,9 @@ def main() -> None:
         if d is None:
             f.add("could not parse kube client cert")
         elif d < args.threshold_days:
-            f.add(f"kube admin cert expires in {d} days ({end})")
+            f.add(f"kube admin cert expires in {d} days ({end})",
+                  severity="critical" if d < 0 else "high",
+                  evidence=f"client-certificate-data notAfter={end}")
         else:
             f.ok(f"kube admin cert OK ({d} days, {end})")
     else:
@@ -90,7 +92,9 @@ def main() -> None:
                 # the score for an unreadable endpoint. Warn only.
                 print("  !! could not read apiserver serving cert (probe failed — not counted)")
             elif d < args.threshold_days:
-                f.add(f"apiserver serving cert expires in {d} days ({end})")
+                f.add(f"apiserver serving cert expires in {d} days ({end})",
+                      severity="critical" if d < 0 else "high",
+                      evidence=f"kube-apiserver serving cert notAfter={end}")
             else:
                 f.ok(f"apiserver serving cert OK ({d} days, {end})")
         except Exception as e:

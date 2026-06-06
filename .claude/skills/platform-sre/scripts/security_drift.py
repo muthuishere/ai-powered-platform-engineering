@@ -39,7 +39,8 @@ def main() -> None:
         for ct in pod["spec"]["containers"]:
             if ct.get("securityContext", {}).get("privileged") is True:
                 found = True
-                f.add(f'privileged: {pod["metadata"]["namespace"]}/{pod["metadata"]["name"]} [{ct["name"]}]')
+                f.add(f'privileged: {pod["metadata"]["namespace"]}/{pod["metadata"]["name"]} [{ct["name"]}]',
+                      severity="high", evidence="securityContext.privileged=true (≈ root on the node)")
     if not found:
         f.ok("no privileged containers in user namespaces")
 
@@ -64,7 +65,8 @@ def main() -> None:
             any("hostPath" in v for v in spec.get("volumes", []))
         if host:
             found = True
-            f.add(f'host ns/path: {pod["metadata"]["namespace"]}/{pod["metadata"]["name"]}')
+            f.add(f'host ns/path: {pod["metadata"]["namespace"]}/{pod["metadata"]["name"]}',
+                  severity="high", evidence="hostNetwork/hostPID/hostPath in use")
     if not found:
         f.ok("no hostNetwork/hostPID/hostPath in user pods")
 
@@ -75,7 +77,7 @@ def main() -> None:
             continue
         n = len([l for l in c.kout("get", "netpol", "-n", nsname, "--no-headers", quiet=True).splitlines() if l.strip()])
         if n == 0:
-            f.add(f"namespace '{nsname}' has 0 NetworkPolicies (flat network)")
+            f.add(f"namespace '{nsname}' has 0 NetworkPolicies (flat network)", severity="low")
         else:
             f.ok(f"{nsname}: {n} NetworkPolicy")
 

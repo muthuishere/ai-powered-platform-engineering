@@ -38,7 +38,7 @@ def main() -> None:
                     if not any(cnd["type"] == "Ready" and cnd["status"] == "True"
                                for cnd in n["status"]["conditions"])]
         if notready:
-            f.add(f"nodes not Ready: {', '.join(notready)}")
+            f.add(f"nodes not Ready: {', '.join(notready)}", severity="critical")
         else:
             f.ok(f"all {len(items)} nodes Ready")
     except Exception:
@@ -50,7 +50,7 @@ def main() -> None:
         print(et.stdout.strip())
         f.ok("etcd answered")
     else:
-        f.add("etcd status query failed — control plane may be degraded")
+        f.add("etcd status query failed — control plane may be degraded", severity="critical")
 
     section("CONTROL-PLANE PODS (kube-system)")
     cp = c.kubectl("get", "pods", "-n", "kube-system", "-o", "json")
@@ -62,7 +62,7 @@ def main() -> None:
             if phase not in ("Running", "Succeeded"):
                 bad.append(f'{pod["metadata"]["name"]}({phase})')
         if bad:
-            f.add(f"control-plane pods not Running: {', '.join(bad)}")
+            f.add(f"control-plane pods not Running: {', '.join(bad)}", severity="high")
         else:
             f.ok("control-plane pods Running")
     except Exception:
