@@ -22,9 +22,9 @@ exits 0** — it's a report, not a gate.
 ## Example shape
 
 ```
-  Control-plane  [##########] 100 / 100  (A)  [0 findings]
   Reliability    [######....]  60 / 100  (D)  [2 findings]
   Security       [########..]  85 / 100  (B)  [1 findings]
   Certificates   [##########] 100 / 100  (A)  [0 findings]
+  Operations     [##########] 100 / 100  (A)  [0 findings]
   PLATFORM MATURITY  [########..]  86 / 100   GRADE B
 ```

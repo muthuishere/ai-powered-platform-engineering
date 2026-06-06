@@ -85,7 +85,7 @@ Implementation notes:
 - `certs.py --cluster admin@ops` → fresh lab certs are far from expiry → 0 findings,
   prints "no cert-driven outage within 30 days".
 - `report.py --cluster admin@dev` → graded scorecard with Reliability the
-  weakest dimension (the fault workloads), Control-plane/Certificates at 100.
+  weakest dimension (the fault workloads), Operations/Certificates at 100.
 
 ## Status (built vs verified)
 
