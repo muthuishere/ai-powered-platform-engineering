@@ -3,12 +3,14 @@ name: platform-sre
 description: >-
   Read-only SRE / diagnostics for Kubernetes clusters on Talos Linux. Trigger
   when the user wants to review cluster health, run a reliability review, scan
-  for security drift, check certificate expiry / predict a cert outage, produce a
-  platform maturity report (scored), or remediate a finding via GitOps (open a PR
-  that ArgoCD syncs). Phrases: "check the cluster", "is dev healthy", "health of
-  staging", "reliability review", "security review", "any privileged pods",
-  "are any certs expiring", "maturity report", "score the platform", "fix the
-  missing probes / PDB", "remediate this", "open a PR for the drift". Always asks
+  for security drift, check certificate expiry / predict a cert outage, review
+  vulnerabilities (CVE / image scan / Talos+Kubernetes version currency / supply
+  chain), produce a platform maturity report (scored), or remediate a finding via
+  GitOps (open a PR that ArgoCD syncs). Phrases: "check the cluster", "is dev
+  healthy", "health of staging", "reliability review", "security review", "any
+  privileged pods", "are any certs expiring", "any CVEs / scan the images", "are
+  we behind on Talos", "maturity report", "score the platform", "fix the missing
+  probes / PDB", "remediate this", "open a PR for the drift". Always asks
   which cluster first (dev / staging / prod); defaults to dev and never the
   current kube context. Refuses any mutating command — read-only except
   remediation, which changes git (a PR), never the cluster.
@@ -52,5 +54,7 @@ adds one capability.
 | 4 | `certs.py` | cert expiry → outage prediction |
 | 4 | `report.py` | scored platform maturity report |
 | 5 | `remediate.py` | detect → open GitOps PR → ArgoCD syncs on merge |
+| 6 | `vuln.py` | Talos/k8s version currency, image supply-chain, CVE scan (trivy/grype) |
+| 7 | — | the same skill runs unchanged against bare-metal clusters (just the kube/talos API) |
 
 Follow the instructions in `references/workflow.md`.

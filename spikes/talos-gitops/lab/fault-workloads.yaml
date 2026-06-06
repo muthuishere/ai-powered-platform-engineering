@@ -88,3 +88,28 @@ spec:
           hostPath:                     # intentional drift
             path: /var/run
             type: Directory
+---
+# `legacy` — the vulnerability offender (book Ch6): runs the mutable `:latest`
+# tag, so what's actually deployed can change under you and can't be audited to a
+# known CVE state. vuln.py flags this as a high supply-chain finding; with a
+# scanner (trivy/grype) installed it also surfaces the image's HIGH/CRITICAL CVEs.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: legacy
+  namespace: demo
+  labels: {app: legacy}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: legacy}
+  template:
+    metadata:
+      labels: {app: legacy}
+    spec:
+      containers:
+        - name: legacy
+          image: nginx:latest          # intentional drift: unpinned mutable tag
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits:   {cpu: 50m, memory: 64Mi}

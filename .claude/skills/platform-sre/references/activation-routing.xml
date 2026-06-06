@@ -34,6 +34,12 @@
       <steps><step ref="references/steps/step-04-certs.md">Run scripts/certs.py --cluster {cluster} [--threshold-days N].</step></steps>
     </route>
 
+    <route id="vuln">
+      <when>vulnerability, vuln, cve, cves, image scan, scan images, known vulnerable, patch status, are we behind on talos, talos version, kubernetes version, version currency, supply chain, latest tag, trivy, grype, patch management</when>
+      <goal>Read-only vulnerability review: Talos/Kubernetes version currency, image supply-chain hygiene (mutable :latest, untrusted registries), and (if trivy/grype present) image CVE scan.</goal>
+      <steps><step ref="references/steps/step-07-vuln.md">Run scripts/vuln.py --cluster {cluster} [--all-namespaces] [--require-digests].</step></steps>
+    </route>
+
     <route id="report">
       <when>report, maturity report, scorecard, score the platform, grade, how mature is this cluster, executive summary, overall health score</when>
       <goal>Run all read-only capabilities and print a scored platform maturity report.</goal>

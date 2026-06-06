@@ -1,0 +1,42 @@
+# =============================================================================
+# ILLUSTRATIVE — EXAMPLE ONLY — NOT A REAL CONFIG, CONTAINS NO SECRETS.
+# =============================================================================
+# A minimal Talos machine-config FRAGMENT for a single bare-metal node, to read
+# alongside chapters/chapter-7-bare-metal.md. It shows the three things a metal
+# node's config must declare that the Docker lab handled for you: the install
+# DISK, the network INTERFACE, and the NAMESERVERS (the Chapter-1 etcd-wedge fix).
+#
+# A REAL machine config additionally carries: machine.type (controlplane|worker),
+# the cluster CA + certs, machine.token / cluster bootstrap token, and
+# cluster.controlPlane.endpoint. Those are SECRETS and are intentionally omitted
+# here — never commit a real one. Generate real configs with `talosctl gen config`
+# (or let Omni / Sidero Metal hand them to the node at provision time).
+# -----------------------------------------------------------------------------
+version: v1alpha1
+machine:
+  # type: controlplane    # <- a REAL config sets this; the first CP node bootstraps etcd.
+
+  install:
+    # The disk Talos writes its immutable image to. On metal this is real
+    # hardware — confirm the device name on the box (`talosctl disks`) before
+    # committing; installing to the wrong disk wipes it.
+    disk: /dev/sda
+    wipe: false           # set true only on a fresh/repurposed disk you intend to erase
+
+  network:
+    interfaces:
+      - interface: eth0   # the node's NIC; match the real device name on the server
+        dhcp: true        # or set addresses: [ "10.0.0.11/24" ] + routes for static IPs
+
+    # THE etcd-wedge FIX (same as spikes/talos-gitops/scripts/patches/dns.yaml):
+    # if the provisioning network's DHCP hands out no usable DNS, the node can't
+    # resolve registry.k8s.io to pull etcd → etcd hangs in "Waiting" forever and
+    # the cluster never bootstraps. Pin nameservers explicitly. Same dependency on
+    # metal as in the Docker lab — same fix.
+    nameservers:
+      - 8.8.8.8
+      - 1.1.1.1
+
+# cluster:                # <- a REAL config has a cluster block (CA, endpoint, token).
+#   controlPlane:         #    Omitted here on purpose: those fields are secrets.
+#     endpoint: https://CLUSTER-VIP:6443

@@ -14,6 +14,8 @@ Read this index first, then build chapters in order.
 | 3 | [chapter-3-health-reliability.md](chapter-3-health-reliability.md) | fault workloads | `health.py` + `reliability.py` |
 | 4 | [chapter-4-security-certs-maturity.md](chapter-4-security-certs-maturity.md) | drift workloads | `security_drift.py` + `certs.py` + `report.py` |
 | 5 | [chapter-5-gitops-remediation.md](chapter-5-gitops-remediation.md) | ArgoCD + Gitea hub | `remediate.py` (detect → PR → ArgoCD) |
+| 6 | [chapter-6-vuln-patch.md](chapter-6-vuln-patch.md) | deliberately-old image in fault workloads | `vuln.py` + **Vulnerability** dimension in `report.py` |
+| 7 | [chapter-7-bare-metal.md](chapter-7-bare-metal.md) | provisioning brief + machine config + TCO worksheet (`spikes/talos-baremetal/`) | **none new** — `report.py --cluster <metal-ctx>` runs unchanged |
 
 ## The four principles every chapter must honour
 
