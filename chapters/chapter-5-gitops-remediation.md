@@ -49,11 +49,11 @@ kubectl --context admin@ops -n gitea port-forward svc/gitea-http 3000:3000
 
 # 2. PREVIEW the fix (dry-run — prints manifest + planned git/PR commands, changes nothing)
 python3 .claude/skills/platform-sre/scripts/remediate.py \
-  --cluster admin@workload-1 --fix missing-pdb --namespace demo --workload web
+  --cluster admin@dev --fix missing-pdb --namespace demo --workload web
 
 # 3. APPLY (opens the PR — still no cluster mutation)
 python3 .claude/skills/platform-sre/scripts/remediate.py \
-  --cluster admin@workload-1 --fix missing-pdb --namespace demo --workload web --apply
+  --cluster admin@dev --fix missing-pdb --namespace demo --workload web --apply
 ```
 
 Then a human reviews + merges the PR; ArgoCD syncs the PDB onto the workload cluster.
@@ -87,7 +87,7 @@ Implementation notes:
 - ArgoCD + Gitea Running on `ops`; the `platform` repo seeded; `platform-root`
   Application present in `argocd`.
 - Workloads registered: `kubectl --context admin@ops -n argocd get secret -l
-  argocd.argoproj.io/secret-type=cluster` shows `cluster-workload-1/2/3`.
+  argocd.argoproj.io/secret-type=cluster` shows `cluster-dev/staging/prod`.
 - ApplicationSets generate one Application per workload cluster; they sync
   ingress-nginx / cert-manager / metrics-server / kube-prometheus-stack.
 - `remediate.py … ` (dry-run) prints the PDB manifest + planned commands; `--apply`

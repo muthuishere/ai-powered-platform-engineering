@@ -29,11 +29,11 @@ The code is `platform-sre` (directory, SKILL.md, 7 chapter briefs, install.sh, m
 - **To flip** (keep `platform-sre`): change ~4 book mentions in Ch2 instead. `platform-sre`
   is more literally accurate (the lab is Talos) but narrower than the book's pitch.
 
-## 2. Cluster naming — `dev/staging/prod` (book) vs `ops/workload-1/2/3` (code)  → **DECISION NEEDED**
+## 2. Cluster naming — `dev/staging/prod` (book) vs `ops/dev/staging/prod` (code)  → **DECISION NEEDED**
 
 The biggest divergence. The book teaches a simple progression: create `dev`, later add
 `staging`, mention `prod`. The lab is a 4-cluster **hub-spoke** (`ops` runs ArgoCD +
-Gitea; `workload-1/2/3` are GitOps targets) — which the GitOps chapter genuinely needs
+Gitea; `dev/staging/prod` are GitOps targets) — which the GitOps chapter genuinely needs
 (you can't demo multi-cluster fan-out from one `dev`).
 
 - **Recommendation [BOTH]:** keep BOTH, and make the book name the gap explicitly.
@@ -44,7 +44,7 @@ Gitea; `workload-1/2/3` are GitOps targets) — which the GitOps chapter genuine
     4-cluster lab (`ops` hub + three `workload-*` spokes) so Chapter 5's multi-cluster
     GitOps is real; chapters 3–4 work identically against any one of them."
   - **[CODE]** make the skill accept any context (it already does — `admin@<name>`),
-    and document that `admin@workload-1` is the book's `dev`-equivalent.
+    and document that `admin@dev` is the book's `dev`-equivalent.
 
 ## 3 + 4. Lab create command & the DNS/etcd wedge  → **[BOOK] — correctness bug**
 

@@ -7,7 +7,7 @@ missing liveness/readiness probes, single replica with no PodDisruptionBudget,
 and no resource limits. Read-only; each finding cites the workload. Exits with
 the finding count.
 
-    python3 reliability.py --cluster admin@workload-1
+    python3 reliability.py --cluster admin@dev
 """
 from __future__ import annotations
 

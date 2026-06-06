@@ -31,11 +31,11 @@ Two read-only capabilities, each a clean `1 script + 1 step file + 1 route` unit
 
 ## What to start
 
-Chapter 1 lab up (`admin@ops`, `admin@workload-1/2/3` reachable). Deploy the lab's
+Chapter 1 lab up (`admin@ops`, `admin@dev/staging/prod` reachable). Deploy the lab's
 fault workloads so reliability has something real to find:
 
 ```bash
-kubectl --context admin@workload-1 apply -f spikes/talos-gitops/lab/fault-workloads.yaml
+kubectl --context admin@dev apply -f spikes/talos-gitops/lab/fault-workloads.yaml
 ```
 
 ## How to do it
@@ -45,7 +45,7 @@ kubectl --context admin@workload-1 apply -f spikes/talos-gitops/lab/fault-worklo
 python3 .claude/skills/platform-sre/scripts/health.py      --cluster admin@ops
 
 # tenant reliability (expect findings against the fault workloads)
-python3 .claude/skills/platform-sre/scripts/reliability.py --cluster admin@workload-1
+python3 .claude/skills/platform-sre/scripts/reliability.py --cluster admin@dev
 ```
 
 Implementation notes the chapter should teach:
@@ -71,8 +71,8 @@ Implementation notes the chapter should teach:
 
 ## Verify (observed on the live lab)
 
-- `health.py --cluster admin@workload-1` → **0 findings** (cluster healthy by design).
-- `reliability.py --cluster admin@workload-1` → **7 findings**: `demo/web` (no
+- `health.py --cluster admin@dev` → **0 findings** (cluster healthy by design).
+- `reliability.py --cluster admin@dev` → **7 findings**: `demo/web` (no
   liveness, no readiness, no limits, single-replica/no-PDB) + `demo/cache`
   (no liveness, no readiness, single-replica/no-PDB).
 

@@ -38,7 +38,7 @@ echo | openssl s_client -connect 127.0.0.1:<port> 2>/dev/null | openssl x509 -no
 ## Lab facts (Docker provisioner on OrbStack)
 
 - Each cluster = 1 control-plane + 1 worker; per-cluster /24 (`ops`=10.5.0.0/24,
-  `workload-1`=10.5.1.0/24, …).
+  `dev`=10.5.1.0/24, …).
 - The provisioner auto-publishes each API on a random high host port (written into
   kubeconfig). Container IPs are not host-routable.
 - DNS gotcha: Talos-in-Docker comes up with empty `dnsServers`; the create script

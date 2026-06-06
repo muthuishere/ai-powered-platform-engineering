@@ -15,10 +15,10 @@ Guardrails: dry-run by default (prints the manifest + the git/PR commands);
 `--apply` is required to actually push and open the PR, and it re-confirms.
 
     # preview only
-    python3 remediate.py --cluster admin@workload-1 --fix missing-pdb \
+    python3 remediate.py --cluster admin@dev --fix missing-pdb \
         --namespace demo --workload web
     # actually open the PR
-    python3 remediate.py --cluster admin@workload-1 --fix missing-pdb \
+    python3 remediate.py --cluster admin@dev --fix missing-pdb \
         --namespace demo --workload web --apply
 """
 from __future__ import annotations

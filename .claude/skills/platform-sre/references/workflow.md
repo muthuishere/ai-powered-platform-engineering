@@ -9,28 +9,27 @@ numbered lab under `spikes/talos-gitops/` and a set of Python capability scripts
 
 ## Variables
 
-- `{project-root}` = the user's working dir (must be inside a
-  `/ai-powered-platform-engineering`-suffixed git checkout).
 - `{skill-root}` = installed folder of this skill (`.claude/skills/platform-sre/`).
-- `{cluster}` = a kube context: `admin@ops`, `admin@workload-1`,
-  `admin@workload-2`, `admin@workload-3`. Always ask if not given. No default.
+- `{cluster}` = a cluster name or kube context: `dev` / `staging` / `prod`
+  (the lab; resolves to `admin@dev` etc.) or any literal context a real org owns.
+  If not given, defaults to `dev` — never the current context.
 - `{PYTHON_BIN}` = python3 binary detected in preflight — never hardcode.
 
 ## Core Rules
 
-- Run every command from `{project-root}`.
-- **Ask which cluster first.** No default; refuse anything that isn't a known context.
+- **Ask which cluster first.** Default to `dev` when none is named; never the
+  current kube context. Refuse an unknown context (the cluster guard).
 - Show every command before running it; the scripts already echo each `kubectl`/
   `talosctl` call — surface them to the user.
 - Read-only except `remediate.py` (which opens a PR — git only, never the cluster).
-- Refuse to proceed outside the lab repo (the scripts enforce this via
-  `prerequisites.enforce()`).
-- Fail fast on missing binaries / unreachable cluster / wrong repo.
+- This skill targets clusters, not a repo — no repo guard. It runs against the
+  lab or any organisation's clusters.
+- Fail fast on missing binaries / unknown or unreachable cluster.
 
 ## Process
 
-1. Read `references/steps/step-00-preflight.md` — repo guard, binaries, list
-   clusters, pick `{cluster}`.
+1. Read `references/steps/step-00-preflight.md` — binaries, cluster guard, list
+   clusters, pick `{cluster}` (default dev).
 2. Read `references/activation-routing.xml` — choose the route + goal.
 3. Run the matched step:
    - `step-01-health.md` — nodes / etcd / control-plane

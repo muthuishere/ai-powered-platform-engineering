@@ -7,14 +7,14 @@ the failure — do not try to recover.
 
 Ask the user:
 
-> Which cluster — **ops**, **workload-1**, **workload-2**, or **workload-3**?
+> Which cluster — **dev**, **staging**, or **prod**? (or any context you own)
 
-Skip the prompt only if the user already named one (e.g. "is ops healthy?").
-There is **no default**; refuse anything that isn't a known kube context.
+Skip the prompt only if the user already named one (e.g. "is staging healthy?").
+If the user gives nothing, the skill **defaults to `dev`** — never the current
+kube context. Call the chosen value `{cluster}` (a name like `dev`, or a literal
+context like `admin@dev`).
 
-Translate the name to a kube context: `ops` → `admin@ops`. Call it `{cluster}`.
-
-## 2. Repo + binaries + cluster guard (one command)
+## 2. Binaries + cluster guard (one command)
 
 ```bash
 python3 .claude/skills/platform-sre/scripts/prerequisites.py --cluster {cluster}
@@ -22,11 +22,11 @@ python3 .claude/skills/platform-sre/scripts/prerequisites.py --cluster {cluster}
 
 This enforces, and stops on failure:
 
-- **binaries**: `git`, `kubectl`, `talosctl`, `python3` on PATH (install hints printed).
-- **repo guard**: `origin` remote must end with `/ai-powered-platform-engineering`
-  (suffix match, so forks pass). Else: `wrong repo: …`.
-- **cluster guard**: `{cluster}` must be an existing kube context. If it isn't, the
-  script lists the lab contexts it found.
+- **binaries**: `kubectl`, `talosctl`, `python3` on PATH (install hints printed).
+- **cluster guard**: `{cluster}` must resolve to an existing kube context
+  (`dev` → `dev` or `admin@dev`). An unknown name is refused with the list of
+  real contexts. There is **no repo guard** — the skill runs against any cluster,
+  from anywhere.
 
 Run with no `--cluster` to just print the lab inventory (use when the user hasn't
 chosen yet):

@@ -48,9 +48,9 @@ namespace is labelled `pod-security.kubernetes.io/enforce: privileged` in
 ## How to do it
 
 ```bash
-python3 .claude/skills/platform-sre/scripts/security_drift.py --cluster admin@workload-1
+python3 .claude/skills/platform-sre/scripts/security_drift.py --cluster admin@dev
 python3 .claude/skills/platform-sre/scripts/certs.py          --cluster admin@ops --threshold-days 30
-python3 .claude/skills/platform-sre/scripts/report.py         --cluster admin@workload-1
+python3 .claude/skills/platform-sre/scripts/report.py         --cluster admin@dev
 ```
 
 Implementation notes:
@@ -79,12 +79,12 @@ Implementation notes:
 
 ## Verify (observed / expected on the live lab)
 
-- `security_drift.py --cluster admin@workload-1` → finds `demo/web` runAsNonRoot not
+- `security_drift.py --cluster admin@dev` → finds `demo/web` runAsNonRoot not
   enforced + `demo` namespace 0 NetworkPolicies (and, once the privileged `cache` pod
   runs, `demo/cache` privileged + hostPath).
 - `certs.py --cluster admin@ops` → fresh lab certs are far from expiry → 0 findings,
   prints "no cert-driven outage within 30 days".
-- `report.py --cluster admin@workload-1` → graded scorecard with Reliability the
+- `report.py --cluster admin@dev` → graded scorecard with Reliability the
   weakest dimension (the fault workloads), Control-plane/Certificates at 100.
 
 ## Status (built vs verified)

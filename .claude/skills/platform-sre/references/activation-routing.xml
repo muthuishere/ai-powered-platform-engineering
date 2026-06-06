@@ -2,16 +2,16 @@
 
   <defaults>
     <rule>Always run preflight (step-00) first.</rule>
-    <rule>Always ask which cluster (admin@ops, admin@workload-1/2/3) first. No default — refuse anything that isn't a known kube context.</rule>
+    <rule>Always ask which cluster (dev / staging / prod, or any kube context) first. If none is named, default to dev — never the current kube context. Refuse an unknown context (the cluster guard).</rule>
     <rule>Show every command before running it. The scripts echo each kubectl/talosctl call; surface them.</rule>
     <rule>Read-only everywhere except the remediate route, which opens a git PR and never touches the cluster.</rule>
-    <rule>Refuse to proceed outside the /ai-powered-platform-engineering lab checkout.</rule>
+    <rule>This skill targets clusters, not a repository — there is no repo guard; the guard is the cluster context. It runs against the lab or any org's clusters.</rule>
   </defaults>
 
   <routes>
 
     <route id="health">
-      <when>health, is the cluster healthy, nodes ready, etcd, control plane, control-plane down, apiserver, is ops healthy, check the cluster, what's wrong with workload-1, cluster status</when>
+      <when>health, is the cluster healthy, nodes ready, etcd, control plane, control-plane down, apiserver, is ops healthy, check the cluster, what's wrong with dev, cluster status</when>
       <goal>Read-only health sweep: nodes Ready, etcd quorum, control-plane pods, Talos services.</goal>
       <steps><step ref="references/steps/step-01-health.md">Run scripts/health.py --cluster {cluster}.</step></steps>
     </route>

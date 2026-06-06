@@ -6,7 +6,7 @@ Read-only scan for postures that drift in real clusters: privileged containers,
 runAsNonRoot not enforced, host namespace / hostPath use, and namespaces with no
 NetworkPolicy. Findings cite the offending pod/namespace. Exits with the count.
 
-    python3 security_drift.py --cluster admin@workload-1
+    python3 security_drift.py --cluster admin@dev
 """
 from __future__ import annotations
 

@@ -15,13 +15,13 @@ faults. Per-chapter build briefs written under `chapters/`.
 
 | Component | Status |
 |---|---|
-| 4 clusters (`ops` + `workload-1/2/3`), 1 cp + 1 worker each = 8 nodes | ✅ all nodes Ready, k8s v1.36.1 |
+| 4 clusters (`ops` + `dev/2/3`), 1 cp + 1 worker each = 8 nodes | ✅ all nodes Ready, k8s v1.36.1 |
 | DNS/etcd fix (`patches/dns.yaml`, `--config-patch`) | ✅ baked into `01`; clusters boot deterministically |
 | Network wiring (`02`) | ✅ workload control-planes routable from ops (10.5.0.4/5/6) |
 | ArgoCD + Gitea hub (`03`) | ✅ running on `ops`; `platform` repo seeded; root App-of-Apps applied |
-| Workload registration (`04`) | ✅ `cluster-workload-1/2/3` secrets, `environment=workload` |
+| Workload registration (`04`) | ✅ `cluster-dev/2/3` secrets, `environment=workload` |
 | GitOps app sync | ✅ cert-manager, ingress-nginx, metrics-server, kube-prometheus-stack **Healthy** on all 3 workloads |
-| Fault workloads (`lab/fault-workloads.yaml`) | ✅ deployed to workload-1 (`demo/web`, `demo/cache`) |
+| Fault workloads (`lab/fault-workloads.yaml`) | ✅ deployed to dev (`demo/web`, `demo/cache`) |
 
 **Footprint decision (yours, while away):** dropped from 2 workers/cluster (12 nodes)
 to **1 worker/cluster (8 nodes)** — 12 nodes wedged the Docker engine. If `docker ps`
@@ -31,7 +31,7 @@ ever hangs, restart OrbStack (quit + reopen).
 
 Rebuilt to match your `reqsume-sre` / `huddle` scaffold (Python scripts, `enforce()`
 guard, `references/steps`, `activation-routing.xml`, README, install.sh). All
-capabilities tested live against `workload-1`:
+capabilities tested live against `dev`:
 
 | Capability | Result |
 |---|---|
@@ -81,5 +81,5 @@ changes **git** (a PR), never the cluster.
 cd spikes/talos-gitops
 ./scripts/01-create-clusters.sh && ./scripts/02-connect-networks.sh
 ./scripts/03-bootstrap-hub.sh   && ./scripts/04-register-clusters.sh
-kubectl --context admin@workload-1 apply -f lab/fault-workloads.yaml
+kubectl --context admin@dev apply -f lab/fault-workloads.yaml
 ```
