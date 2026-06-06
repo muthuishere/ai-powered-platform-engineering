@@ -1,0 +1,28 @@
+# App-of-Apps root. ArgoCD syncs this one Application; it in turn renders every
+# manifest under gitops/apps/ (the four platform ApplicationSets). Add a new
+# ApplicationSet file there and ArgoCD picks it up automatically — that's the
+# GitOps loop: git is the source of truth, ArgoCD reconciles to it.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform-root
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: http://gitea-http.gitea.svc.cluster.local:3000/gitops/platform.git
+    targetRevision: HEAD
+    path: gitops/apps
+    directory:
+      recurse: true
+  destination:
+    server: https://kubernetes.default.svc   # the ops cluster itself
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

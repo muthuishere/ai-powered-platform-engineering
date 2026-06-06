@@ -1,0 +1,58 @@
+# ApplicationSet: kube-prometheus-stack (Prometheus + Grafana + operator) on
+# every workload cluster. Tuned SMALL so four clusters fit on one laptop:
+#   - short retention, single replica, modest resource requests
+#   - alertmanager disabled (not needed to learn the flow)
+#   - node-exporter disabled: it host-mounts /proc, /sys etc. which is fragile
+#     on Talos-in-Docker nodes; kube-state-metrics still gives useful signals.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: kube-prometheus-stack
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - clusters:
+        selector:
+          matchLabels:
+            environment: workload
+  template:
+    metadata:
+      name: 'kube-prometheus-stack-{{.name}}'
+    spec:
+      project: default
+      source:
+        repoURL: https://prometheus-community.github.io/helm-charts
+        chart: kube-prometheus-stack
+        targetRevision: 65.5.1
+        helm:
+          valuesObject:
+            alertmanager:
+              enabled: false
+            nodeExporter:
+              enabled: false
+            grafana:
+              adminPassword: admin
+              resources:
+                requests: {cpu: 20m, memory: 64Mi}
+            kubeStateMetrics:
+              enabled: true
+            prometheus:
+              prometheusSpec:
+                replicas: 1
+                retention: 2h
+                resources:
+                  requests: {cpu: 100m, memory: 400Mi}
+                  limits: {memory: 900Mi}
+                # Talos-in-Docker control-plane components aren't scrapeable on
+                # host ports; don't let unschedulable targets block the sync.
+                serviceMonitorSelectorNilUsesHelmValues: false
+      destination:
+        server: '{{.server}}'
+        namespace: monitoring
+      syncPolicy:
+        automated: {prune: true, selfHeal: true}
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true

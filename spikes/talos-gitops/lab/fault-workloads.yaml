@@ -1,0 +1,90 @@
+# Fault-injection workloads for the platform-sre skill (book Ch3-4).
+#
+# These deploy CLEANLY (pods go Ready, cluster stays healthy) but carry
+# INTENTIONAL drift so the read-only capabilities have real findings to surface:
+#
+#   reliability.py  → `web`: no probes, single replica + no PDB, no resource limits
+#   security_drift  → `web`: runAsNonRoot not enforced
+#                   → `cache`: privileged container + hostPath volume
+#                   → namespace `demo`: no NetworkPolicy
+#
+# Apply to a WORKLOAD cluster (not ops):
+#   kubectl --context admin@dev apply -f lab/fault-workloads.yaml
+# Remove with `kubectl ... delete -f`. Nothing here touches the control plane.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: demo
+  labels:
+    # Talos enforces PodSecurity `baseline` cluster-wide, which would BLOCK the
+    # privileged + hostPath `cache` pod. Relaxing PSA to `privileged` on this
+    # namespace lets the drift actually run — and relaxing PSA is itself a real
+    # security finding (a future security_drift check can flag this label).
+    pod-security.kubernetes.io/enforce: privileged
+---
+# `web` — the reliability offender: 1 replica, no probes, no limits, no PDB,
+# and no securityContext (so runAsNonRoot is not enforced → also a security finding).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: demo
+  labels: {app: web}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: web}
+  template:
+    metadata:
+      labels: {app: web}
+    spec:
+      containers:
+        - name: web
+          image: nginx:1.27-alpine
+          ports:
+            - {containerPort: 80}
+          # NOTE (intentional drift): no livenessProbe, no readinessProbe,
+          # no resources.limits, no securityContext.runAsNonRoot.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  namespace: demo
+spec:
+  selector: {app: web}
+  ports:
+    - {port: 80, targetPort: 80}
+---
+# `cache` — the security offender: privileged container + hostPath mount.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cache
+  namespace: demo
+  labels: {app: cache}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: cache}
+  template:
+    metadata:
+      labels: {app: cache}
+    spec:
+      containers:
+        - name: cache
+          image: busybox:1.36
+          command: ["sh", "-c", "sleep infinity"]
+          securityContext:
+            privileged: true            # intentional drift
+          volumeMounts:
+            - {name: hostrun, mountPath: /hostrun}
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits:   {cpu: 50m, memory: 64Mi}
+      volumes:
+        - name: hostrun
+          hostPath:                     # intentional drift
+            path: /var/run
+            type: Directory
