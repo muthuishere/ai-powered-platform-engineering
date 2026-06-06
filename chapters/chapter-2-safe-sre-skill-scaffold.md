@@ -23,11 +23,11 @@ guardrails live in the scripts, where the model can't talk its way around them:
 - **Read-only by default** — the `kube.py` wrapper allow-lists read verbs; a
   mutating verb raises a hard error. The model literally cannot issue `kubectl
   delete` through the skill.
-- **Ask which cluster** — `prerequisites.enforce(cluster)` refuses an unknown or
-  absent context. No "current cluster" default to fat-finger into prod.
+- **Ask which cluster** — `prerequisites.enforce(cluster)` resolves the target
+  (default `dev`, never the current context) and refuses an unknown one.
 - **Show every command** — `kube.py` echoes each call to stderr before running it.
-- **Cluster guard + repo guard** — runs only inside the lab checkout, only against
-  a validated context.
+- **Cluster guard** — runs only against a context that exists in kubeconfig. There
+  is no repo guard: the skill targets clusters, so it works for any org.
 - **Auditable path** — established as the design rule here; realized in Chapter 5
   (changes go through a PR, never a live cluster).
 
@@ -52,7 +52,7 @@ Mirror the shipped `reqsume-sre` / `huddle` skill shape (see `~/.claude/CLAUDE.m
 │   ├── talos-cheatsheet.md
 │   └── steps/step-00-preflight.md … step-06-remediate.md
 └── scripts/
-    ├── prerequisites.py          # enforce(): binaries + repo guard + cluster guard
+    ├── prerequisites.py          # enforce(): binaries + cluster guard (resolve/default dev)
     ├── kube.py                   # read-only kubectl/talosctl wrappers + Findings
     └── <capability>.py           # one per chapter (Ch3–5)
 ```
@@ -60,8 +60,8 @@ Mirror the shipped `reqsume-sre` / `huddle` skill shape (see `~/.claude/CLAUDE.m
 Build order within the chapter:
 
 1. **`scripts/prerequisites.py`** — the cornerstone guard. `enforce(cluster)`
-   checks binaries, the `/ai-powered-platform-engineering` origin (suffix match so
-   forks pass), and that the kube context exists. Every other script calls it first.
+   checks binaries and resolves the cluster (default `dev`, never the current
+   context), refusing an unknown one. Every other script calls it first.
 2. **`scripts/kube.py`** — the `Cluster` handle: `kubectl()`/`talosctl()` that
    *show* and *allow-list* every call, plus a `Findings` accumulator whose count
    becomes the script's exit code (so capabilities double as CI gates).
@@ -75,7 +75,7 @@ Build order within the chapter:
 
 | Path | Role |
 |---|---|
-| `scripts/prerequisites.py` | binaries + repo + cluster guard (`enforce()`) |
+| `scripts/prerequisites.py` | binaries + cluster guard / resolve+default-dev (`enforce()`) |
 | `scripts/kube.py` | read-only command wrappers + `Findings` + `section()` |
 | `SKILL.md` | activation triggers + the four Core Rules |
 | `references/workflow.md` | variables + process (read steps in order) |
@@ -85,10 +85,10 @@ Build order within the chapter:
 ## Verify the guardrails actually bite
 
 ```bash
-# repo guard: refuses outside the lab checkout
-(cd /tmp && python3 .../scripts/prerequisites.py)        # → "wrong repo"
-# cluster guard: refuses unknown context
-python3 .../scripts/prerequisites.py --cluster admin@nope # → not found, lists real ones
+# cluster guard: refuses an unknown context, lists the real ones
+python3 .../scripts/prerequisites.py --cluster nope       # → "unknown cluster 'nope'"
+# default-dev: no --cluster resolves to dev, never the current context
+python3 .../scripts/prerequisites.py                      # → "defaulting to 'admin@dev'"
 # read-only guard (unit-level): kube.py refuses a non-read verb → hard error
 ```
 
