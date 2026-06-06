@@ -47,13 +47,14 @@ def main() -> None:
 
     if not args.json:
         print(f"Generating platform maturity report for {ctx} — running all capabilities...")
-    # Dimension names match the book's maturity report (Ch4): Operations is the
-    # control-plane/health signal; the other three are 1:1.
+    # Dimension names match the book's maturity report (Ch4/Ch6): Operations is the
+    # control-plane/health signal; Vulnerability is version-currency + image risk.
     dims = {
         "Reliability": run_dim("reliability.py", ctx),
         "Security": run_dim("security_drift.py", ctx),
         "Certificates": run_dim("certs.py", ctx),
         "Operations": run_dim("health.py", ctx),
+        "Vulnerability": run_dim("vuln.py", ctx),
     }
     scores = {k: max(0, 100 - v * PENALTY) for k, v in dims.items()}
     total = sum(scores.values()) // len(scores)

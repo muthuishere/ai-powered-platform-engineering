@@ -25,6 +25,16 @@ these are the evidence sources behind the findings.
 | `health` | health | Talos's own cluster-health verdict |
 | `etcd status` | health | etcd member present + healthy (the least-forgiving component) |
 | `services` | health | `etcd` / `kubelet` / `apid` service health |
+| `version` | vuln | running Talos node version (currency vs a floor) |
+
+## Vulnerability sources (vuln.py)
+
+| Source | Signal |
+|---|---|
+| `talosctl version` (Server Tag) | Talos version currency vs `--min-talos` floor |
+| `nodes[].status.nodeInfo.kubeletVersion` | Kubernetes version currency vs `--min-k8s` floor |
+| `pods[].spec.containers[].image` (+ initContainers) | image refs → mutable `:latest` (high), un-allow-listed registry (medium), not-digest-pinned (`--require-digests`) |
+| `trivy`/`grype` image scan (optional) | per-image HIGH/CRITICAL CVE counts + ids (skipped if no scanner) |
 
 ## Finding shape
 
