@@ -16,16 +16,18 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from kube import Cluster, Findings, section  # noqa: E402
+from kube import Cluster, Findings, section, set_json_mode  # noqa: E402
 
 
 def main() -> None:
     p = argparse.ArgumentParser(description="Talos cluster health sweep")
-    p.add_argument("--cluster", required=True, help="kube context, e.g. admin@ops")
+    p.add_argument("--cluster", help="cluster name or context (dev/staging/prod/...); default dev")
+    p.add_argument("--json", action="store_true", help="emit findings as a JSON bundle")
     args = p.parse_args()
 
     c = Cluster(args.cluster)
-    f = Findings()
+    set_json_mode(args.json)
+    f = Findings(c.ctx, "operations")
 
     section("NODES — all should be Ready")
     nodes = c.kubectl("get", "nodes", "-o", "json")
@@ -72,7 +74,7 @@ def main() -> None:
         if any(k in line for k in ("NODE", "etcd", "kubelet", "apid")):
             print(line)
 
-    f.exit()
+    f.exit(as_json=args.json)
 
 
 if __name__ == "__main__":

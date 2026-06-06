@@ -17,24 +17,26 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from kube import Cluster, Findings, section  # noqa: E402
+from kube import Cluster, Findings, section, set_json_mode  # noqa: E402
 
 SKIP_NS = {"kube-system", "kube-public", "kube-node-lease", "argocd", "gitea"}
 
 
 def main() -> None:
     p = argparse.ArgumentParser(description="Reliability review")
-    p.add_argument("--cluster", required=True)
+    p.add_argument("--cluster", help="cluster name or context (dev/staging/prod/...); default dev")
+    p.add_argument("--json", action="store_true", help="emit findings as a JSON bundle")
     args = p.parse_args()
     c = Cluster(args.cluster)
-    f = Findings()
+    set_json_mode(args.json)
+    f = Findings(c.ctx, "reliability")
 
     raw = c.kubectl("get", "deploy,statefulset", "-A", "-o", "json")
     items = json.loads(raw.stdout or '{"items":[]}')["items"]
     workloads = [w for w in items if w["metadata"]["namespace"] not in SKIP_NS]
     if not workloads:
-        print("no user workloads found (deploy a lab app first).")
-        f.exit()
+        section("no user workloads found (deploy a lab app first).")
+        f.exit(as_json=args.json)
 
     # PDB count per namespace (cheap proxy — a real impl would match selectors).
     pdb_ns: dict[str, int] = {}
@@ -74,7 +76,7 @@ def main() -> None:
         else:
             f.ok(f"replicas={replicas} (HA)")
 
-    f.exit()
+    f.exit(as_json=args.json)
 
 
 if __name__ == "__main__":

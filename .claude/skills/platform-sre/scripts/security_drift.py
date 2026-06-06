@@ -16,17 +16,19 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from kube import Cluster, Findings, section  # noqa: E402
+from kube import Cluster, Findings, section, set_json_mode  # noqa: E402
 
 SKIP_NS = {"kube-system", "kube-public", "kube-node-lease"}
 
 
 def main() -> None:
     p = argparse.ArgumentParser(description="Security drift scan")
-    p.add_argument("--cluster", required=True)
+    p.add_argument("--cluster", help="cluster name or context (dev/staging/prod/...); default dev")
+    p.add_argument("--json", action="store_true", help="emit findings as a JSON bundle")
     args = p.parse_args()
     c = Cluster(args.cluster)
-    f = Findings()
+    set_json_mode(args.json)
+    f = Findings(c.ctx, "security")
 
     pods = json.loads(c.kubectl("get", "pods", "-A", "-o", "json").stdout or '{"items":[]}')["items"]
     user_pods = [p for p in pods if p["metadata"]["namespace"] not in SKIP_NS]
@@ -77,7 +79,7 @@ def main() -> None:
         else:
             f.ok(f"{nsname}: {n} NetworkPolicy")
 
-    f.exit()
+    f.exit(as_json=args.json)
 
 
 if __name__ == "__main__":
