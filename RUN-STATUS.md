@@ -6,7 +6,7 @@ your review.
 
 ## TL;DR
 
-The full book lab + the `talos-sre` skill are built and working end-to-end. Four
+The full book lab + the `platform-sre` skill are built and working end-to-end. Four
 Talos clusters, the GitOps hub (ArgoCD + Gitea), platform components syncing onto all
 three workload clusters, and all six skill capabilities tested against real injected
 faults. Per-chapter build briefs written under `chapters/`.
@@ -27,7 +27,7 @@ faults. Per-chapter build briefs written under `chapters/`.
 to **1 worker/cluster (8 nodes)** — 12 nodes wedged the Docker engine. If `docker ps`
 ever hangs, restart OrbStack (quit + reopen).
 
-## Skill (`.claude/skills/talos-sre/`)
+## Skill (`.claude/skills/platform-sre/`)
 
 Rebuilt to match your `reqsume-sre` / `huddle` scaffold (Python scripts, `enforce()`
 guard, `references/steps`, `activation-routing.xml`, README, install.sh). All

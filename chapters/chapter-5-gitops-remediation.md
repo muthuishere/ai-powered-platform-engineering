@@ -48,11 +48,11 @@ spikes/talos-gitops/scripts/04-register-clusters.sh   # register workloads in Ar
 kubectl --context admin@ops -n gitea port-forward svc/gitea-http 3000:3000
 
 # 2. PREVIEW the fix (dry-run — prints manifest + planned git/PR commands, changes nothing)
-python3 .claude/skills/talos-sre/scripts/remediate.py \
+python3 .claude/skills/platform-sre/scripts/remediate.py \
   --cluster admin@workload-1 --fix missing-pdb --namespace demo --workload web
 
 # 3. APPLY (opens the PR — still no cluster mutation)
-python3 .claude/skills/talos-sre/scripts/remediate.py \
+python3 .claude/skills/platform-sre/scripts/remediate.py \
   --cluster admin@workload-1 --fix missing-pdb --namespace demo --workload web --apply
 ```
 
@@ -79,8 +79,8 @@ Implementation notes:
 | `spikes/talos-gitops/scripts/04-register-clusters.sh` | register workload clusters in ArgoCD |
 | `spikes/talos-gitops/gitops/bootstrap/root-app.yaml` | App-of-Apps root |
 | `spikes/talos-gitops/gitops/apps/*.yaml` | ApplicationSets (the platform components) |
-| `.claude/skills/talos-sre/scripts/remediate.py` | detect → PR → (merge) → ArgoCD |
-| `.claude/skills/talos-sre/references/steps/step-06-remediate.md` | remediation runbook + safety model |
+| `.claude/skills/platform-sre/scripts/remediate.py` | detect → PR → (merge) → ArgoCD |
+| `.claude/skills/platform-sre/references/steps/step-06-remediate.md` | remediation runbook + safety model |
 
 ## Verify
 

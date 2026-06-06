@@ -22,7 +22,7 @@ Leave it running in another shell; `remediate.py` clones/pushes via `localhost:3
 ## 2. Preview the fix
 
 ```bash
-python3 .claude/skills/talos-sre/scripts/remediate.py \
+python3 .claude/skills/platform-sre/scripts/remediate.py \
   --cluster {cluster} --fix missing-pdb --namespace {ns} --workload {name}
 ```
 
@@ -32,7 +32,7 @@ the user.
 ## 3. Apply (opens the PR)
 
 ```bash
-python3 .claude/skills/talos-sre/scripts/remediate.py \
+python3 .claude/skills/platform-sre/scripts/remediate.py \
   --cluster {cluster} --fix missing-pdb --namespace {ns} --workload {name} --apply
 ```
 

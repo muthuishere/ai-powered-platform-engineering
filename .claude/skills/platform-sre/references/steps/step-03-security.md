@@ -6,7 +6,7 @@ hostPath/hostNetwork, NetworkPolicies, or "is this hardened".
 ## Show the command, then run
 
 ```bash
-python3 .claude/skills/talos-sre/scripts/security_drift.py --cluster {cluster}
+python3 .claude/skills/platform-sre/scripts/security_drift.py --cluster {cluster}
 ```
 
 Read-only scan over user-namespace pods:

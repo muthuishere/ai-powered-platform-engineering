@@ -1,5 +1,5 @@
 ---
-name: talos-sre
+name: platform-sre
 description: >-
   Autonomous-but-safe SRE for Talos Kubernetes clusters. Trigger when the user
   wants to review cluster health, run a reliability review, scan for security
@@ -15,7 +15,7 @@ description: >-
 allowed-tools: Bash(kubectl:*) Bash(talosctl:*) Bash(python3:*) Bash(git:*) Bash(gh:*)
 ---
 
-# talos-sre
+# platform-sre
 
 Evidence-grounded SRE for the Talos-on-Docker lab (`spikes/talos-gitops/`:
 `ops` hub + `workload-1/2/3`). It **reads** clusters to find real problems,

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Create all four Talos clusters with the Docker provisioner.
-#   ops + workload-1 + workload-2 + workload-3
+#   ops + dev + staging + prod
 # Each: 1 control-plane + $WORKERS_PER_CLUSTER workers on its own /24 bridge.
 #
 # Idempotent: skips a cluster whose control-plane container is already running.

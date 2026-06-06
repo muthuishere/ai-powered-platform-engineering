@@ -45,11 +45,13 @@ def main() -> None:
     enforce(cluster=args.cluster)
 
     print(f"Generating platform maturity report for {args.cluster} — running all capabilities...")
+    # Dimension names match the book's maturity report (Ch4): Operations is the
+    # control-plane/health signal; the other three are 1:1.
     dims = {
-        "Control-plane": run_dim("health.py", args.cluster),
         "Reliability": run_dim("reliability.py", args.cluster),
         "Security": run_dim("security_drift.py", args.cluster),
         "Certificates": run_dim("certs.py", args.cluster),
+        "Operations": run_dim("health.py", args.cluster),
     }
     scores = {k: max(0, 100 - v * PENALTY) for k, v in dims.items()}
     total = sum(scores.values()) // len(scores)

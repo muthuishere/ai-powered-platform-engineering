@@ -1,4 +1,4 @@
-# Fault-injection workloads for the talos-sre skill (book Ch3-4).
+# Fault-injection workloads for the platform-sre skill (book Ch3-4).
 #
 # These deploy CLEANLY (pods go Ready, cluster stays healthy) but carry
 # INTENTIONAL drift so the read-only capabilities have real findings to surface:
@@ -9,7 +9,7 @@
 #                   → namespace `demo`: no NetworkPolicy
 #
 # Apply to a WORKLOAD cluster (not ops):
-#   kubectl --context admin@workload-1 apply -f lab/fault-workloads.yaml
+#   kubectl --context admin@dev apply -f lab/fault-workloads.yaml
 # Remove with `kubectl ... delete -f`. Nothing here touches the control plane.
 ---
 apiVersion: v1

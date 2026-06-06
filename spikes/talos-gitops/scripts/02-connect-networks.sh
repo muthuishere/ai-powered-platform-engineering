@@ -2,7 +2,7 @@
 # Cross-cluster networking for the hub-spoke GitOps model.
 #
 # Each Talos cluster lives on its own Docker bridge (ops=10.5.0.0/24,
-# workload-1=10.5.1.0/24, ...). By default those bridges can't talk to each
+# dev=10.5.1.0/24, ...). By default those bridges can't talk to each
 # other, so ArgoCD running inside the OPS cluster cannot reach a workload
 # cluster's API server.
 #

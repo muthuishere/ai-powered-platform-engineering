@@ -1,4 +1,4 @@
-# talos-sre
+# platform-sre
 
 Safe, autonomous SRE skill for the Talos-on-Docker lab in this repo. Read-only
 diagnostics + scored maturity report + GitOps remediation (opens a PR; ArgoCD
@@ -8,10 +8,10 @@ on Talos*.
 ## Install
 
 ```bash
-./.claude/skills/talos-sre/install.sh
+./.claude/skills/platform-sre/install.sh
 ```
 
-Symlinks the skill into `~/.claude/skills/talos-sre`. Restart your agent session so
+Symlinks the skill into `~/.claude/skills/platform-sre`. Restart your agent session so
 it discovers the new `SKILL.md`. (It also works in-repo without installing — the
 scripts are plain `python3`.)
 

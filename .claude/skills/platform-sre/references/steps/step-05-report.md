@@ -5,7 +5,7 @@ Use when the user asks for a report, scorecard, grade, or "how mature is this cl
 ## Show the command, then run
 
 ```bash
-python3 .claude/skills/talos-sre/scripts/report.py --cluster {cluster}
+python3 .claude/skills/platform-sre/scripts/report.py --cluster {cluster}
 ```
 
 Runs all four read-only capabilities (health, reliability, security, certs),

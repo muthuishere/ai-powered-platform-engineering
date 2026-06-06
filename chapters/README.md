@@ -24,8 +24,9 @@ AI that "runs your cluster." Every artifact in every chapter enforces:
    (`kubectl get/describe…`, `talosctl health/etcd…`). A mutating verb is a hard
    error. The *only* state-changing path is Chapter 5, and it changes **git**
    (a pull request), never the cluster directly.
-2. **Ask which cluster first.** No default, no guessing — an explicit, validated
-   context (`admin@ops`, `admin@workload-1`…) is required, or the run is refused.
+2. **Ask which cluster first.** Defaults to `dev`, never the current context — an
+   explicit, validated context (`admin@dev`, `admin@ops`…) is required, or the run
+   is refused.
 3. **Show every command before running it.** Each `kubectl`/`talosctl` call is
    echoed to stderr before execution. Nothing happens off-screen.
 4. **An auditable path before any change reaches the platform.** Remediation flows
@@ -35,16 +36,16 @@ AI that "runs your cluster." Every artifact in every chapter enforces:
 **Evidence-grounded agentic loop:** scripts gather grounded evidence (raw API
 reads); the LLM only *reasons over what the scripts return* and every finding
 cites its evidence. The model never free-hands a cluster command — it routes
-through the guarded scripts. A `prerequisites.enforce()` guard (binaries + repo
-guard + cluster guard) runs first in every script; fail-fast, no silent recovery.
+through the guarded scripts. A `prerequisites.enforce()` guard (binaries + cluster
+guard) runs first in every script; fail-fast, no silent recovery.
 
 ## Build-agent decisions (answered)
 
 The original brief asked the coding agent to decide and report. Decisions taken:
 
-1. **Skill name → `talos-sre`.** The lab is Talos-specific (immutable, API-driven,
-   no SSH), and the name states the platform plainly. `platform-sre` was rejected
-   as over-broad for what the lab actually exercises.
+1. **Skill name → `platform-sre`.** The skill works against ANY conformant kube
+   context (a big org points it at their real clusters); Talos is the lab substrate.
+   The broader name states the intent — the lab just happens to be Talos.
 2. **Reasoning-layer model → Claude (Anthropic), provider-agnostic by design.**
    This is a Claude Code *skill*: the reasoning layer is whichever agent loads
    `SKILL.md`. The scripts embed **no** LLM call and return plain evidence, so
@@ -62,7 +63,7 @@ The original brief asked the coding agent to decide and report. Decisions taken:
 
 - **Lab:** `spikes/talos-gitops/` — numbered scripts `01`→`04`, GitOps manifests
   under `gitops/`, fault workloads under `lab/`.
-- **Skill:** `.claude/skills/talos-sre/` — `SKILL.md`, `references/` (workflow,
+- **Skill:** `.claude/skills/platform-sre/` — `SKILL.md`, `references/` (workflow,
   activation-routing, steps, cheatsheet), `scripts/*.py`.
 
 Conventions for both follow the house skill style documented in the global

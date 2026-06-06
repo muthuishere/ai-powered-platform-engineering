@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-kube.py — read-only cluster access for talos-sre.
+kube.py — read-only cluster access for platform-sre.
 
 Importable helper used by every capability script (health, reliability,
 security_drift, certs, report). Calls prerequisites.enforce(cluster) before
@@ -56,7 +56,7 @@ class Cluster:
     def kubectl(self, *args: str, check: bool = False, quiet: bool = False) -> subprocess.CompletedProcess:
         verb = args[0] if args else ""
         if verb not in KUBECTL_READ_VERBS:
-            _die(f"Refused: non-read kubectl verb `{verb}` (talos-sre is read-only).")
+            _die(f"Refused: non-read kubectl verb `{verb}` (platform-sre is read-only).")
         cmd = ["kubectl", "--context", self.ctx, *args]
         if not quiet:
             _echo(cmd)
@@ -70,7 +70,7 @@ class Cluster:
     def talosctl(self, *args: str, node: str = "127.0.0.1", quiet: bool = False) -> subprocess.CompletedProcess:
         cmd0 = args[0] if args else ""
         if cmd0 not in TALOS_READ_CMDS:
-            _die(f"Refused: non-read talosctl command `{cmd0}` (talos-sre is read-only).")
+            _die(f"Refused: non-read talosctl command `{cmd0}` (platform-sre is read-only).")
         cmd = ["talosctl", "--context", self.talos_ctx, "--nodes", node, *args]
         if not quiet:
             _echo(cmd)

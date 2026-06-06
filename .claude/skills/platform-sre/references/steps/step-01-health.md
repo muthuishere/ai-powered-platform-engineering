@@ -6,7 +6,7 @@ or "what's wrong with {cluster}".
 ## Show the command, then run
 
 ```bash
-python3 .claude/skills/talos-sre/scripts/health.py --cluster {cluster}
+python3 .claude/skills/platform-sre/scripts/health.py --cluster {cluster}
 ```
 
 The script (read-only) checks, echoing every `kubectl`/`talosctl` call:

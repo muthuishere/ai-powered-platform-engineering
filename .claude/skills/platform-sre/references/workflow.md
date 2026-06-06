@@ -1,8 +1,8 @@
 ---
-name: talos-sre-workflow
+name: platform-sre-workflow
 ---
 
-# talos-sre Workflow
+# platform-sre Workflow
 
 Read-only SRE diagnostics + GitOps remediation for the Talos lab. Wraps the
 numbered lab under `spikes/talos-gitops/` and a set of Python capability scripts.
@@ -11,7 +11,7 @@ numbered lab under `spikes/talos-gitops/` and a set of Python capability scripts
 
 - `{project-root}` = the user's working dir (must be inside a
   `/ai-powered-platform-engineering`-suffixed git checkout).
-- `{skill-root}` = installed folder of this skill (`.claude/skills/talos-sre/`).
+- `{skill-root}` = installed folder of this skill (`.claude/skills/platform-sre/`).
 - `{cluster}` = a kube context: `admin@ops`, `admin@workload-1`,
   `admin@workload-2`, `admin@workload-3`. Always ask if not given. No default.
 - `{PYTHON_BIN}` = python3 binary detected in preflight — never hardcode.

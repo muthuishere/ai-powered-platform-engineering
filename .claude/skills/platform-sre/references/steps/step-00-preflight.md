@@ -17,7 +17,7 @@ Translate the name to a kube context: `ops` → `admin@ops`. Call it `{cluster}`
 ## 2. Repo + binaries + cluster guard (one command)
 
 ```bash
-python3 .claude/skills/talos-sre/scripts/prerequisites.py --cluster {cluster}
+python3 .claude/skills/platform-sre/scripts/prerequisites.py --cluster {cluster}
 ```
 
 This enforces, and stops on failure:
@@ -32,7 +32,7 @@ Run with no `--cluster` to just print the lab inventory (use when the user hasn'
 chosen yet):
 
 ```bash
-python3 .claude/skills/talos-sre/scripts/prerequisites.py
+python3 .claude/skills/platform-sre/scripts/prerequisites.py
 ```
 
 ## 3. If the lab isn't up
@@ -48,4 +48,4 @@ spikes/talos-gitops/scripts/04-register-clusters.sh  # register workloads in Arg
 
 ## 4. Success
 
-On success the script prints `talos-sre prerequisites OK`. Proceed to the routed step.
+On success the script prints `platform-sre prerequisites OK`. Proceed to the routed step.

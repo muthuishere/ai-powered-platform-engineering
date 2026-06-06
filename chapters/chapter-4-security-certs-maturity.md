@@ -48,9 +48,9 @@ namespace is labelled `pod-security.kubernetes.io/enforce: privileged` in
 ## How to do it
 
 ```bash
-python3 .claude/skills/talos-sre/scripts/security_drift.py --cluster admin@workload-1
-python3 .claude/skills/talos-sre/scripts/certs.py          --cluster admin@ops --threshold-days 30
-python3 .claude/skills/talos-sre/scripts/report.py         --cluster admin@workload-1
+python3 .claude/skills/platform-sre/scripts/security_drift.py --cluster admin@workload-1
+python3 .claude/skills/platform-sre/scripts/certs.py          --cluster admin@ops --threshold-days 30
+python3 .claude/skills/platform-sre/scripts/report.py         --cluster admin@workload-1
 ```
 
 Implementation notes:
@@ -70,12 +70,12 @@ Implementation notes:
 
 | Path | Role |
 |---|---|
-| `.claude/skills/talos-sre/scripts/security_drift.py` | security posture scan |
-| `.claude/skills/talos-sre/scripts/certs.py` | cert expiry → outage prediction |
-| `.claude/skills/talos-sre/scripts/report.py` | **capstone**: scored maturity report |
-| `.claude/skills/talos-sre/references/steps/step-03-security.md` | security runbook |
-| `.claude/skills/talos-sre/references/steps/step-04-certs.md` | certs runbook |
-| `.claude/skills/talos-sre/references/steps/step-05-report.md` | report runbook |
+| `.claude/skills/platform-sre/scripts/security_drift.py` | security posture scan |
+| `.claude/skills/platform-sre/scripts/certs.py` | cert expiry → outage prediction |
+| `.claude/skills/platform-sre/scripts/report.py` | **capstone**: scored maturity report |
+| `.claude/skills/platform-sre/references/steps/step-03-security.md` | security runbook |
+| `.claude/skills/platform-sre/references/steps/step-04-certs.md` | certs runbook |
+| `.claude/skills/platform-sre/references/steps/step-05-report.md` | report runbook |
 
 ## Verify (observed / expected on the live lab)
 

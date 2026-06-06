@@ -42,7 +42,7 @@ Chapter 1's lab up; `python3`, `git`, `kubectl`, `talosctl` on PATH.
 Mirror the shipped `reqsume-sre` / `huddle` skill shape (see `~/.claude/CLAUDE.md`):
 
 ```
-.claude/skills/talos-sre/
+.claude/skills/platform-sre/
 ├── SKILL.md                      # thin: frontmatter + Core Rules + "follow workflow.md"
 ├── README.md
 ├── install.sh

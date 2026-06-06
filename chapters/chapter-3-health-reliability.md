@@ -42,10 +42,10 @@ kubectl --context admin@workload-1 apply -f spikes/talos-gitops/lab/fault-worklo
 
 ```bash
 # substrate health (expect 0 findings on a fresh lab cluster)
-python3 .claude/skills/talos-sre/scripts/health.py      --cluster admin@ops
+python3 .claude/skills/platform-sre/scripts/health.py      --cluster admin@ops
 
 # tenant reliability (expect findings against the fault workloads)
-python3 .claude/skills/talos-sre/scripts/reliability.py --cluster admin@workload-1
+python3 .claude/skills/platform-sre/scripts/reliability.py --cluster admin@workload-1
 ```
 
 Implementation notes the chapter should teach:
@@ -62,11 +62,11 @@ Implementation notes the chapter should teach:
 
 | Path | Role |
 |---|---|
-| `.claude/skills/talos-sre/scripts/health.py` | substrate health sweep |
-| `.claude/skills/talos-sre/scripts/reliability.py` | workload reliability review |
-| `.claude/skills/talos-sre/scripts/kube.py` | read-only wrappers + `Findings` (shared) |
-| `.claude/skills/talos-sre/references/steps/step-01-health.md` | health runbook |
-| `.claude/skills/talos-sre/references/steps/step-02-reliability.md` | reliability runbook |
+| `.claude/skills/platform-sre/scripts/health.py` | substrate health sweep |
+| `.claude/skills/platform-sre/scripts/reliability.py` | workload reliability review |
+| `.claude/skills/platform-sre/scripts/kube.py` | read-only wrappers + `Findings` (shared) |
+| `.claude/skills/platform-sre/references/steps/step-01-health.md` | health runbook |
+| `.claude/skills/platform-sre/references/steps/step-02-reliability.md` | reliability runbook |
 | `spikes/talos-gitops/lab/fault-workloads.yaml` | intentional drift to detect |
 
 ## Verify (observed on the live lab)

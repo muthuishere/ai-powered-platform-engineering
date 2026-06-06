@@ -6,7 +6,7 @@ Use when the user asks about probes, replicas, HA, PDBs, resource limits, or
 ## Show the command, then run
 
 ```bash
-python3 .claude/skills/talos-sre/scripts/reliability.py --cluster {cluster}
+python3 .claude/skills/platform-sre/scripts/reliability.py --cluster {cluster}
 ```
 
 Scans Deployments/StatefulSets in **user** namespaces (skips kube-system, argocd,

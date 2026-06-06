@@ -11,7 +11,7 @@
 ## What you build
 
 1. A local fleet of **4 Talos Kubernetes clusters** via the Docker provisioner —
-   `ops` (the future GitOps hub) + `workload-1/2/3`. Each is 1 control-plane + 1
+   `ops` (the future GitOps hub) + `dev/staging/prod`. Each is 1 control-plane + 1
    worker (right-sized for a laptop).
 2. The agent's first capability: **inventory + a read-only "hello, cluster"** —
    list the clusters and run one guarded read against each.
@@ -31,14 +31,14 @@
 
 - Docker engine via **OrbStack** (macOS arm64 assumed), `talosctl` ≥ v1.13,
   `kubectl`. Verify: `talosctl version --client`, `docker info`.
-- This repo checked out (the skill's repo guard requires the
-  `/ai-powered-platform-engineering` origin).
+- This repo checked out for the lab; the skill itself works against ANY kube
+  context (its **cluster guard** only requires the context to exist).
 
 ## How to do it
 
 ```bash
 # from spikes/talos-gitops/
-./scripts/01-create-clusters.sh        # builds ops + workload-1/2/3
+./scripts/01-create-clusters.sh        # builds ops + dev/staging/prod
 ```
 
 `01-create-clusters.sh` is idempotent and reproducible. The key design points the
@@ -61,8 +61,8 @@ chapter must explain:
 Then prove the first read-only call (the agent's entry point):
 
 ```bash
-python3 ../../.claude/skills/talos-sre/scripts/prerequisites.py   # inventory
-# → lists admin@ops, admin@workload-1/2/3 after passing repo + binary guards
+python3 ../../.claude/skills/platform-sre/scripts/prerequisites.py   # inventory
+# → lists admin@ops, admin@dev/staging/prod after passing cluster + binary guards
 ```
 
 ## What is what (artifact map)
@@ -72,12 +72,12 @@ python3 ../../.claude/skills/talos-sre/scripts/prerequisites.py   # inventory
 | `spikes/talos-gitops/scripts/lib.sh` | shared topology + helpers (clusters, subnets, contexts) |
 | `spikes/talos-gitops/scripts/01-create-clusters.sh` | create the 4 clusters (idempotent) |
 | `spikes/talos-gitops/scripts/patches/dns.yaml` | the nameserver config-patch (the etcd-wedge fix) |
-| `.claude/skills/talos-sre/scripts/prerequisites.py` | guards + cluster inventory = the first read-only capability |
+| `.claude/skills/platform-sre/scripts/prerequisites.py` | guards + cluster inventory = the first read-only capability |
 
 ## Verify
 
 ```bash
-for c in admin@ops admin@workload-1 admin@workload-2 admin@workload-3; do
+for c in admin@ops admin@dev admin@staging admin@prod; do
   kubectl --context "$c" get nodes
 done
 ```
@@ -87,4 +87,4 @@ All nodes `Ready`, Kubernetes v1.36.1, 8 containers total.
 ## Status (built vs stubbed)
 
 - **Built & verified live:** all 4 clusters up (8 nodes Ready); DNS fix baked in;
-  `prerequisites.py` lists the fleet after passing the repo/binary guards.
+  `prerequisites.py` lists the fleet after passing the cluster/binary guards.

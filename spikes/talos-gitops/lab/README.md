@@ -1,13 +1,13 @@
 # Lab fault-injection
 
-Workloads with **intentional** drift so the `talos-sre` skill's read-only
+Workloads with **intentional** drift so the `platform-sre` skill's read-only
 capabilities (book Ch3-4) have real findings to surface. They deploy cleanly —
 pods go Ready, the cluster stays healthy — the drift is in their *spec*.
 
 ## Apply (to a workload cluster, not ops)
 
 ```bash
-kubectl --context admin@workload-1 apply -f spikes/talos-gitops/lab/fault-workloads.yaml
+kubectl --context admin@dev apply -f spikes/talos-gitops/lab/fault-workloads.yaml
 ```
 
 ## What each capability should then find
@@ -23,13 +23,13 @@ kubectl --context admin@workload-1 apply -f spikes/talos-gitops/lab/fault-worklo
 The single-replica/no-PDB finding is fixable end-to-end:
 
 ```bash
-# start the Gitea tunnel first (see talos-sre step-06)
-python3 .claude/skills/talos-sre/scripts/remediate.py \
-  --cluster admin@workload-1 --fix missing-pdb --namespace demo --workload web --apply
+# start the Gitea tunnel first (see platform-sre step-06)
+python3 .claude/skills/platform-sre/scripts/remediate.py \
+  --cluster admin@dev --fix missing-pdb --namespace demo --workload web --apply
 ```
 
 ## Clean up
 
 ```bash
-kubectl --context admin@workload-1 delete -f spikes/talos-gitops/lab/fault-workloads.yaml
+kubectl --context admin@dev delete -f spikes/talos-gitops/lab/fault-workloads.yaml
 ```

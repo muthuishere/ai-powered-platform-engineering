@@ -15,19 +15,19 @@ set -euo pipefail
 #   name        subnet          role
 #   ----        ------          ----
 #   ops         10.5.0.0/24     hub: Gitea + ArgoCD
-#   workload-1  10.5.1.0/24     spoke
-#   workload-2  10.5.2.0/24     spoke
-#   workload-3  10.5.3.0/24     spoke
+#   dev         10.5.1.0/24     spoke
+#   staging     10.5.2.0/24     spoke
+#   prod        10.5.3.0/24     spoke
 
 # "name:subnet"
 CLUSTERS=(
   "ops:10.5.0.0/24"
-  "workload-1:10.5.1.0/24"
-  "workload-2:10.5.2.0/24"
-  "workload-3:10.5.3.0/24"
+  "dev:10.5.1.0/24"
+  "staging:10.5.2.0/24"
+  "prod:10.5.3.0/24"
 )
 
-WORKLOAD_CLUSTERS=(workload-1 workload-2 workload-3)
+WORKLOAD_CLUSTERS=(dev staging prod)
 OPS_CLUSTER="ops"
 
 # Every cluster: 1 control-plane + 1 worker (2 nodes each, 8 containers total).

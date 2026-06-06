@@ -5,7 +5,7 @@ Use when the user asks about certs, expiry, PKI rotation, or "when will the API 
 ## Show the command, then run
 
 ```bash
-python3 .claude/skills/talos-sre/scripts/certs.py --cluster {cluster} [--threshold-days 30]
+python3 .claude/skills/platform-sre/scripts/certs.py --cluster {cluster} [--threshold-days 30]
 ```
 
 Read-only. Reads the kubeconfig admin client cert and the live kube-apiserver
