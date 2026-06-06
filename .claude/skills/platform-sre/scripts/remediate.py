@@ -87,13 +87,14 @@ def gitea_open_pr(branch: str, title: str, body: str) -> None:
 
 def main() -> None:
     p = argparse.ArgumentParser(description="GitOps remediation (opens a PR)")
-    p.add_argument("--cluster", required=True, help="cluster the finding came from (for the PR description)")
+    p.add_argument("--cluster", help="cluster the finding came from (dev/staging/prod/...); default dev")
     p.add_argument("--fix", required=True, choices=list(FIXES))
     p.add_argument("--namespace", required=True)
     p.add_argument("--workload", required=True)
     p.add_argument("--apply", action="store_true", help="actually push + open the PR (default: preview only)")
     args = p.parse_args()
-    enforce(cluster=args.cluster, extra_binaries=["git", "kubectl"])
+    cluster = enforce(cluster=args.cluster, extra_binaries=["git", "kubectl"])
+    args.cluster = cluster  # resolved context (default dev)
 
     path, manifest = FIXES[args.fix](args.namespace, args.workload)
     branch = f"remediate/{args.fix}-{args.namespace}-{args.workload}"

@@ -40,24 +40,37 @@ def bar(s: int) -> str:
 
 def main() -> None:
     p = argparse.ArgumentParser(description="Platform maturity report")
-    p.add_argument("--cluster", required=True)
+    p.add_argument("--cluster", help="cluster name or context (dev/staging/prod/...); default dev")
+    p.add_argument("--json", action="store_true", help="emit the scored report as JSON")
     args = p.parse_args()
-    enforce(cluster=args.cluster)
+    ctx = enforce(cluster=args.cluster)  # resolves default dev, validates the context
 
-    print(f"Generating platform maturity report for {args.cluster} — running all capabilities...")
+    if not args.json:
+        print(f"Generating platform maturity report for {ctx} — running all capabilities...")
     # Dimension names match the book's maturity report (Ch4): Operations is the
     # control-plane/health signal; the other three are 1:1.
     dims = {
-        "Reliability": run_dim("reliability.py", args.cluster),
-        "Security": run_dim("security_drift.py", args.cluster),
-        "Certificates": run_dim("certs.py", args.cluster),
-        "Operations": run_dim("health.py", args.cluster),
+        "Reliability": run_dim("reliability.py", ctx),
+        "Security": run_dim("security_drift.py", ctx),
+        "Certificates": run_dim("certs.py", ctx),
+        "Operations": run_dim("health.py", ctx),
     }
     scores = {k: max(0, 100 - v * PENALTY) for k, v in dims.items()}
     total = sum(scores.values()) // len(scores)
 
+    if args.json:
+        import json
+        print(json.dumps({
+            "cluster": ctx,
+            "score": total,
+            "grade": grade(total),
+            "dimensions": {k: {"score": scores[k], "grade": grade(scores[k]),
+                               "findings": dims[k]} for k in dims},
+        }, indent=2))
+        sys.exit(0)
+
     print("\n================ PLATFORM MATURITY REPORT ================")
-    print(f"  cluster: {args.cluster}")
+    print(f"  cluster: {ctx}")
     print("---------------------------------------------------------")
     for k in dims:
         s = scores[k]
@@ -65,8 +78,8 @@ def main() -> None:
     print("---------------------------------------------------------")
     print(f"  PLATFORM MATURITY  {bar(total)}  {total:>3} / 100   GRADE {grade(total)}")
     print("=========================================================")
-    print("\n  Drill in:   python3 scripts/reliability.py --cluster", args.cluster)
-    print("  Remediate:  python3 scripts/remediate.py --cluster", args.cluster, "--finding <id>")
+    print("\n  Drill in:   python3 scripts/reliability.py --cluster", ctx)
+    print("  Remediate:  python3 scripts/remediate.py --cluster", ctx, "--fix missing-pdb ...")
     sys.exit(0)
 
 
