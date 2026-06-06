@@ -1,128 +1,70 @@
-# Book ↔ Code alignment report
+# Book ↔ Code alignment — status
 
 The manuscript (`…/aipoweredkubernetesplatformengineering/manuscript/`) and this
-companion repo drifted apart while each was built. A reader who buys the book and
-clones the repo must find what they read. This report maps every divergence and
-recommends a fix direction per item.
+companion repo drifted apart while each was built. Decision (Muthukumaran):
+**align the code to the book, keep the docker lab, make it work for a big org,
+don't drift too much.** This is the resolution log.
 
-**Guiding principle:** the **book is the source of truth for narrative, naming, and
-the five guardrails** (it's polished and customer-facing). The **companion code is
-the source of truth for what actually runs** (it's verified live). Where they
-disagree, prefer: change the code to match the book's *contracts* (names, layout),
-and recommend small book tweaks only where the book is *factually wrong* (a command
-that won't run).
-
-Legend: **[CODE]** = fix in this repo · **[BOOK]** = recommend a manuscript tweak
-(hand to the manuscript agent) · **[BOTH]** = meet in the middle.
+Legend: ✅ done in code · 📖 recommend a manuscript tweak (hand to the book agent).
 
 ---
 
-## 1. Skill name — `platform-sre` (book) vs `platform-sre` (code)  → **DECISION NEEDED**
+## ✅ 1. Skill name → `platform-sre`
+Renamed `talos-sre` → `platform-sre` (directory + every reference). Matches the
+book and the broader "works against any conformant cluster" framing.
 
-The book ships `platform-sre` in Ch2 (folder layout, `SKILL.md` example, description).
-The code is `platform-sre` (directory, SKILL.md, 7 chapter briefs, install.sh, memory).
+## ✅ 2. Cluster model — org-ready
+- Lab renamed: `ops` hub + `dev` / `staging` / `prod` spokes (was workload-1/2/3).
+- The skill takes **any** kube context. `prerequisites.resolve_cluster()` accepts
+  `dev` / `staging` / `prod` or any literal context; if none is named it
+  **defaults to `dev`, never the current context**; unknown → refuse with the list.
+- **Repo guard removed.** A repo guard would refuse to run in a customer's repo —
+  fatal for a big org. The guard is now the book's **cluster guard** (the context
+  must exist). This is the one deliberate deviation from the house repo-guard rule,
+  justified by the big-org requirement and the book's five guardrails.
 
-- **Recommendation: rename code → `platform-sre`.** The book is the published
-  artifact and frames the skill as working against *any* conformant cluster with
-  Talos as the lab substrate — `platform-sre` is the intentional, broader name.
-  Cost: rename one directory + ~15 references. Lower-risk than editing the book.
-- **To flip** (keep `platform-sre`): change ~4 book mentions in Ch2 instead. `platform-sre`
-  is more literally accurate (the lab is Talos) but narrower than the book's pitch.
+## ✅ 3 + 📖 4. Lab create command & the DNS/etcd wedge
+- Code: `01-create-clusters.sh` already uses the Docker provisioner with the
+  nameserver `--config-patch` that prevents the etcd wedge on OrbStack.
+- 📖 **Book correctness fix (hand to manuscript agent):** Ch1 §1.6 shows
+  `talosctl cluster create --name dev` with no mention of the empty-`dnsServers`
+  etcd wedge. On OrbStack a reader's etcd can hang forever. Add a short sidebar
+  pointing at `01-create-clusters.sh`'s `--config-patch` fix. This is the most
+  likely "the book's lab doesn't work for me" issue.
 
-## 2. Cluster naming — `dev/staging/prod` (book) vs `ops/dev/staging/prod` (code)  → **DECISION NEEDED**
+## ✅ 5. Skill layout
+- Kept a single unified `kube.py` runner (the book can call it "a runner module" —
+  we didn't split into kube_runner/talos_runner to avoid churn).
+- Added `references/schema.md` (k8s + Talos resource/field reference) for book parity.
+- `env_loader.py` intentionally omitted — there is no vault; kubeconfig is the
+  only config. 📖 the book's Ch2 layout can drop `env_loader.py` and note this.
 
-The biggest divergence. The book teaches a simple progression: create `dev`, later add
-`staging`, mention `prod`. The lab is a 4-cluster **hub-spoke** (`ops` runs ArgoCD +
-Gitea; `dev/staging/prod` are GitOps targets) — which the GitOps chapter genuinely needs
-(you can't demo multi-cluster fan-out from one `dev`).
+## ✅ 6. Structured, evidence-grounded findings — the headline upgrade
+`kube.py` `Findings` now carries `{id, severity, summary, evidence, proposed_fix}`,
+ranked worst-first, with `--json` on every capability. This makes the code
+actually demonstrate the book's central pitch (grounded, cited, ranked findings)
+instead of approximating it with text lines. Severities wired: node/etcd =
+critical, control-plane/privileged/hostPath/expiring-cert = high, probes/root =
+medium, limits/NetworkPolicy = low, expired cert = critical.
 
-- **Recommendation [BOTH]:** keep BOTH, and make the book name the gap explicitly.
-  - The book's `dev` is the *teaching* cluster for Ch1–4 (health/reliability/security/
-    certs against one cluster — true to the prose).
-  - The companion lab's `ops + workload-*` hub-spoke is the **Ch5 GitOps** topology.
-  - Add one paragraph to book Ch1 §1.6 and Ch5 §5.1: "the companion repo provisions a
-    4-cluster lab (`ops` hub + three `workload-*` spokes) so Chapter 5's multi-cluster
-    GitOps is real; chapters 3–4 work identically against any one of them."
-  - **[CODE]** make the skill accept any context (it already does — `admin@<name>`),
-    and document that `admin@dev` is the book's `dev`-equivalent.
+## ✅ 7. Report dimensions → `Operations`
+`report.py` scores Reliability / Security / Certificates / **Operations** (was
+Control-plane), matching the book's Ch4 example. `--json` scored bundle added.
 
-## 3 + 4. Lab create command & the DNS/etcd wedge  → **[BOOK] — correctness bug**
-
-Book Ch1 §1.6 says:
-```
-talosctl cluster create --name dev
-```
-Two problems for a reader on Docker/OrbStack:
-1. Our verified lab uses `talosctl cluster create docker --name … --config-patch dns.yaml`.
-   On Talos v1.13 the docker provisioner and the nameserver patch matter.
-2. **The book never mentions the empty-`dnsServers` etcd wedge.** A reader on OrbStack
-   may hit an etcd that hangs forever pulling its image, and the book gives them no
-   way out. This is the single most likely "the book's lab doesn't work for me" issue.
-
-- **Recommendation [BOOK]:** add a short, honest sidebar to §1.6 — "On some Docker
-  runtimes (notably OrbStack on macOS) a Talos node comes up with no DNS server and
-  etcd can't pull its image; the companion repo's `01-create-clusters.sh` pins
-  nameservers via `--config-patch` to fix this. Use that script rather than the bare
-  command if your cluster hangs on etcd." This turns a reader-blocker into a teaching
-  moment (and it's exactly the kind of hard-won detail your style favours).
-- **[CODE]** already handled in `spikes/talos-gitops/scripts/patches/dns.yaml`.
-
-## 5. Skill folder layout  → **[CODE] partial**
-
-| Book layout | Code layout | Action |
-|---|---|---|
-| `workflow.md` at skill root | `references/workflow.md` | **[BOOK]** trivial: book can show it under `references/` (matches reqsume-sre too) |
-| `steps/` at skill root | `references/steps/` | same — **[BOOK]** or **[CODE]** move; recommend book matches code (reqsume-sre nests under references) |
-| `kube_runner.py` + `talos_runner.py` | `kube.py` (one `Cluster` class) | **[CODE]** acceptable to keep unified; **[BOOK]** mention it's one runner module |
-| `env_loader.py` | (none) | **[CODE]** not needed (no vault); **[BOOK]** drop from layout or note "kubeconfig is the only config" |
-| `references/schema.md` | `references/talos-cheatsheet.md` | **[CODE]** rename/add `schema.md` (k8s+Talos resource reference) — cheap win |
-| `references/presets/` | (none) | **[CODE]** add `references/presets/*.yaml` canned checks (see item 8) |
-
-## 6. Findings model — structured (book) vs text lines (code)  → **[CODE] — best "make it better"**
-
-The book sells findings as structured objects: `id`, `severity`, `evidence{source,
-detail}`, `recommendation`/`proposed_fix`/`prediction`, and a reasoning layer that
-**ranks by severity** and **drops any finding without evidence**. The code currently
-prints text warnings and uses exit-code = count.
-
-- **Recommendation [CODE]:** upgrade `kube.py`'s `Findings` to carry structured
-  findings (`id`, `severity`, `evidence`, optional `proposed_fix`) and add a
-  `--json` output mode. This is the highest-value code change — it makes the code
-  actually demonstrate the book's central pitch (grounded, cited, ranked findings)
-  instead of approximating it. Keep the human text mode as the default.
-
-## 7. Report dimensions — `Operations` (book) vs `Control-plane` (code)  → **[BOTH]**
-
-Book scores Reliability/Security/Certificates/**Operations**; code scores
-**Control-plane**/Reliability/Security/Certificates.
-
-- **Recommendation:** rename the code's `Control-plane` dimension to **`Operations`**
-  (control-plane health *is* the operational signal) so the report matches the book's
-  example verbatim — **[CODE]**, one-line change in `report.py`.
-
-## 8. Preset checks & step set  → **[CODE]**
-
-Book has `step-05-preset` and `references/presets/` (canned read-only checks, inherited
-from reqsume-sre's `presets/*.sql`). Code dropped presets and instead has
-`step-05-report` + `step-06-remediate`.
-
-- **Recommendation [CODE]:** add back a **preset** concept as drop-in
-  `references/presets/*.yaml` (each a named bundle of read-only checks) and a
-  `step-05-preset.md`, then renumber report→`step-06`, remediate→`step-07`. This
-  restores the book's structure and the "add a preset, no code change" extensibility
-  story your style favours. **[BOOK]** then add report + remediate steps to Ch4/Ch5
-  layout (they're currently implied, not drawn).
+## 📖 8. Presets / step-05-preset — deferred (don't-drift)
+The book's Ch2 layout lists `references/presets/` + `step-05-preset`. We **did not**
+add presets or renumber the steps — it's churn against the "don't drift too much"
+guidance, and our six concrete capabilities (health, reliability, security, certs,
+report, remediate) are the substance. 📖 the book can present presets as a
+documented **extension point** ("drop a `.yaml` check in `references/presets/`")
+rather than a shipped step, matching reqsume-sre's spirit without the code drift.
 
 ---
 
-## Recommended execution order
-
-1. **[CODE, safe, now]** item 7 (rename dimension → Operations); item 5 `schema.md`;
-   item 6 structured findings + `--json` (the big win).
-2. **[DECISION]** items 1 + 2 (skill name; cluster-naming reconciliation) — pick a
-   direction, then I apply the rename/notes.
-3. **[BOOK, hand to manuscript agent]** items 3+4 (DNS sidebar — correctness), item 5
-   layout wording, item 8 step list.
-
-The book is strong as prose; the work is making the companion repo *be* what the book
-promises, plus one honest correctness sidebar so a reader's lab actually boots.
+## Net
+Code now matches the book's contracts: `platform-sre`, dev/staging/prod, the five
+guardrails (read-only, ask-which-cluster/default-dev, show-every-command, cluster
+guard, fail-fast), structured findings, the maturity report, GitOps remediation —
+and it runs against any org's clusters, not just this lab. Two items are **book
+tweaks** to hand to the manuscript agent: the DNS sidebar (correctness) and the
+layout/preset wording (cosmetic).
