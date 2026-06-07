@@ -9,6 +9,29 @@ download, no external daemon.**
 
 See [`DESIGN.md`](DESIGN.md) for the full rationale; this README is the build/run guide.
 
+## Status: proven on real bare metal
+
+This is not a paper design. The image **builds**, the model **loads from the baked-in
+GGUF with no network**, the OpenAI endpoint **serves a real completion**, and `/review`
+**executed a tool against a live cluster**:
+
+- **Build:** the fat image builds clean — JDK 22 JRE + Spring Boot agent + python3 +
+  kubectl + talosctl + the baked GGUF. ~5.31 GB (the model layer dominates). Runs with
+  `--enable-native-access=ALL-UNNAMED` for mochallama's Project Panama FFM bridge.
+- **Air-gapped model load (confirmed):** the model loads from `/models/<file>.gguf` with
+  **no egress**. mochallama's `HuggingFaceModels.downloadIfAbsent` short-circuits on
+  `Files.exists(...)` *before* it ever dereferences the `file://` URL, so nothing is
+  fetched at runtime. Model **READY in ~3.2s** on the test box.
+- **Local completion served:** a real `POST /v1/chat/completions` was answered by the
+  in-process local model.
+- **Tool executed against the cluster:** the model emitted a structured tool call
+  (`clusterHealth({"cluster":"dev"})`, `finish_reason: tool_calls`), and `POST
+  /review?cluster=dev` actually ran `health.py` against the live cluster and came back
+  with real node/pod data.
+
+Two engineering lessons fell out of getting there — see
+[**Two things that bit us**](#two-things-that-bit-us) below.
+
 ## What it is
 
 Two jobs, one install:
@@ -106,6 +129,36 @@ Key `values.yaml` knobs: `image.*`, `model.{filename,contextSize,threads,tempera
 `auth.{enabled,token,existingSecret}`, `resources`, `networkPolicy.allowedNamespaces`.
 
 Installed via the same ArgoCD/Helm path as Ch5 — `build → push → ArgoCD syncs`.
+
+## Two things that bit us
+
+These two cost the most time getting from "compiles" to "executes a tool against the
+cluster." Both are now fixed in the code; if you re-wire this yourself, expect them.
+
+1. **You must run the tool-execution loop yourself.** The mochallama spring-ai adapter
+   surfaces the model's tool-call *request* but does **not** run the execute → re-prompt
+   loop — a plain `ChatClient.call()` hands you the raw tool call, not the answer. So
+   [`AgentConfig`](src/main/java/dev/platformsre/aiop/AgentConfig.java) +
+   [`ReviewController`](src/main/java/dev/platformsre/aiop/ReviewController.java) drive it
+   explicitly with Spring AI's `ToolCallingManager`: offer the tools with
+   `internalToolExecutionEnabled(false)`, execute the requested `@Tool`, append the result
+   to the conversation, and call again — capped at `MAX_TURNS` so a confused model can't
+   loop forever.
+
+2. **Pin a low temperature or a small model won't emit structured tool calls.** The
+   adapter does **not** inherit `llamacpp.model.temperature`; with no temperature on the
+   request options it falls back to the core default (0.7), at which a small (1.5B–3B)
+   model *narrates the tool call as prose JSON* instead of emitting the structured
+   `<tool_call>` the parser detects — so `hasToolCalls()` stays false and the loop never
+   fires. `ReviewController` pins `temperature(0.0)` on the call options, which makes
+   structured tool-calling deterministic.
+
+> **Honest caveat on small-model summaries.** With a 1.5B model, the wiring, serving,
+> and tool execution are all correct, but the model **paraphrases the tool's JSON loosely
+> in its final prose** — in one run it summarised the nodes as "node1/node2" when the live
+> cluster's node was `cherry-bench-controlplane-1`. The evidence it ran on was real; the
+> *summary fidelity* is a model-size limitation. A 3B+ model summarises faithfully. Scope
+> the model to the hardware and the fidelity you need.
 
 ## Honest caveats
 

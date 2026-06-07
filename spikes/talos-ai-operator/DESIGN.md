@@ -38,6 +38,27 @@ talos-ai-operator:<tag>   (built, pushed to the in-cluster Gitea registry)
 Each `@Tool` (e.g. `clusterHealth(cluster)`, `vulnReview(cluster)`) shells out to the
 matching read-only Python script and returns its evidence/JSON to the model.
 
+## Proven on real bare metal
+This design was built and run end-to-end on a real bare-metal Talos cluster:
+- The fat image **builds** (~5.31 GB; JDK 22 FFM, run with `--enable-native-access`).
+- The model **loads air-gapped** from the baked `/models/*.gguf` with **no network** —
+  mochallama's `HuggingFaceModels.downloadIfAbsent` short-circuits on `Files.exists`
+  before dereferencing the `file://` URL (READY in ~3.2s).
+- `POST /v1/chat/completions` **served a real local completion**, and
+  `POST /review?cluster=dev` **executed `health.py` against the live cluster** off a
+  structured `clusterHealth({"cluster":"dev"})` tool call (`finish_reason: tool_calls`).
+
+## Two wiring truths we learned the hard way
+1. **Run the tool-execution loop yourself.** The mochallama spring-ai adapter emits the
+   model's tool-call *request* but does NOT run the execute→re-prompt loop — a plain
+   `ChatClient.call()` returns the raw tool call, not the answer. `AgentConfig` +
+   `ReviewController` drive it explicitly with Spring AI's `ToolCallingManager`
+   (`internalToolExecutionEnabled(false)`, execute, append, re-prompt, turn-capped).
+2. **Pin a low temperature for small-model tool calls.** The adapter does not inherit
+   `llamacpp.model.temperature`; at the core default (0.7) a small (1.5B–3B) model
+   narrates the tool call as prose JSON instead of emitting the structured `<tool_call>`
+   the parser detects. `ReviewController` pins `temperature(0.0)` to make it deterministic.
+
 ## Locked defaults (vetoable)
 - **Registry:** Gitea container registry on `ops` (`build && push` target).
 - **Model (lab):** `Qwen2.5-3B-Instruct` GGUF (q4_k_m) baked in — tool-capable, CPU-runnable;
@@ -57,12 +78,17 @@ helm/talos-ai-operator/
 ```
 Installed via the same ArgoCD/Helm path as Ch5 — `build → push → ArgoCD syncs`.
 
-## Honest caveats (will be stated in the chapter)
+## Honest caveats (stated in the chapter)
 - **CPU inference is heavy.** A 3B model runs on CPU but is slow; the 8-node OrbStack lab
   is already strained — the lab demo uses the small model and a single replica; real use
-  wants a sized node (or GPU). We'll measure and report, not pretend.
+  wants a sized node (or GPU). We did not measure throughput; the proof is qualitative
+  (loads air-gapped, serves a completion, runs the tool against the cluster), not a
+  benchmark.
 - **Small local models < Claude** at multi-step reasoning — the *tool grounding* carries it;
-  scope tasks accordingly.
+  scope tasks accordingly. Confirmed on bare metal: a 1.5B model wired and executed the
+  tool correctly but **paraphrased the tool's JSON loosely** in its prose summary (said
+  "node1/node2" vs the real `cherry-bench-controlplane-1`). The serving/execution are
+  right; summary fidelity needs a 3B+ model.
 - **Image is large** (JDK + native libs + python/kubectl/talosctl + baked GGUF, multi-GB) —
   that's the "all embedded / no network" trade you asked for. Pushing it needs the registry.
 - **Talos system-extension path** (baking into the node OS image via Image Factory) is the
