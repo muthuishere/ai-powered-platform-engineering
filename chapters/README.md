@@ -15,7 +15,9 @@ Read this index first, then build chapters in order.
 | 4 | [chapter-4-security-certs-maturity.md](chapter-4-security-certs-maturity.md) | drift workloads | `security_drift.py` + `certs.py` + `report.py` |
 | 5 | [chapter-5-gitops-remediation.md](chapter-5-gitops-remediation.md) | ArgoCD + Gitea hub | `remediate.py` (detect → PR → ArgoCD) |
 | 6 | [chapter-6-vuln-patch.md](chapter-6-vuln-patch.md) | deliberately-old image in fault workloads | `vuln.py` + **Vulnerability** dimension in `report.py` |
-| 7 | [chapter-7-bare-metal.md](chapter-7-bare-metal.md) | provisioning brief + machine config + TCO worksheet (`spikes/talos-baremetal/`) | **none new** — `report.py --cluster <metal-ctx>` runs unchanged |
+| 7 | [chapter-7-bare-metal.md](chapter-7-bare-metal.md) | provisioning brief + machine config + TCO worksheet (`spikes/talos-baremetal/`) | `upgrade.py` (Ch6) + `worthiness.py` (Ch7); `report.py --cluster <metal-ctx>` runs unchanged |
+| 8 | [chapter-8-stateful-data.md](chapter-8-stateful-data.md) | Postgres SS-vs-KubeVirt benchmark (`spikes/talos-stateful/`) + DuckDB/DuckLake demo (`spikes/talos-data/`) | the agent reviews the stateful layer (read-only) |
+| 9 | [chapter-9-sovereign-ai-operator.md](chapter-9-sovereign-ai-operator.md) | the embedded AI-operator plugin (`spikes/talos-ai-operator/`) | mochallama + baked model + all tools as one air-tight installable plugin |
 
 ## The four principles every chapter must honour
 
