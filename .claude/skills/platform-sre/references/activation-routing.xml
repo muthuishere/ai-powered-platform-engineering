@@ -40,6 +40,18 @@
       <steps><step ref="references/steps/step-07-vuln.md">Run scripts/vuln.py --cluster {cluster} [--all-namespaces] [--require-digests].</step></steps>
     </route>
 
+    <route id="upgrade">
+      <when>upgrade, can we upgrade, upgrade readiness, version skew, deprecated api, removed api, preflight, talos upgrade, kubernetes upgrade, dry-run, rollback, fearless upgrade</when>
+      <goal>Read-only upgrade readiness: current versions, node version skew, deprecated/removed-API preflight (pluto/kubent if present), and the privileged A/B upgrade plan (never executed).</goal>
+      <steps><step ref="references/steps/step-08-upgrade.md">Run scripts/upgrade.py --cluster {cluster} [--target-k8s vX].</step></steps>
+    </route>
+
+    <route id="worthiness">
+      <when>do we need kubernetes, is this k8s worthy, should this be on kubernetes, overkill, fargate, cloud run, too small for k8s, k8s overhead, right-size the platform</when>
+      <goal>Advisory: count service/workload/autoscaling/scale signals and judge whether the cluster justifies Kubernetes overhead vs ECS Fargate / Cloud Run.</goal>
+      <steps><step ref="references/steps/step-09-worthiness.md">Run scripts/worthiness.py --cluster {cluster} [--threshold N].</step></steps>
+    </route>
+
     <route id="report">
       <when>report, maturity report, scorecard, score the platform, grade, how mature is this cluster, executive summary, overall health score</when>
       <goal>Run all read-only capabilities and print a scored platform maturity report.</goal>

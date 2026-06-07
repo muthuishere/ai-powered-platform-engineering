@@ -55,6 +55,8 @@ adds one capability.
 | 4 | `report.py` | scored platform maturity report |
 | 5 | `remediate.py` | detect → open GitOps PR → ArgoCD syncs on merge |
 | 6 | `vuln.py` | Talos/k8s version currency, image supply-chain, CVE scan (trivy/grype) |
+| 6 | `upgrade.py` | upgrade readiness: version skew, deprecated-API preflight (pluto/kubent), A/B plan |
+| 7 | `worthiness.py` | "is this even a k8s workload?" advisory (service count / scale / autoscaling) |
 | 7 | — | the same skill runs unchanged against bare-metal clusters (just the kube/talos API) |
 
 Follow the instructions in `references/workflow.md`.
