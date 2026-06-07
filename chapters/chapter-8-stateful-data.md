@@ -7,6 +7,15 @@
 > **Who it's for:** teams told "don't run databases/data on Kubernetes." **What you
 > learn:** answer that fear with *measured evidence*, not dogma.
 
+|  | **Arm A — CloudNativePG** (StatefulSet) | **Arm B — KubeVirt VM** |
+|---|---|---|
+| Failover | app-level promotion (automatic) | storage HA + live migration; **no** auto app failover |
+| Measured with | `pgbench` — TPS, p50/p95/p99, failover time | `pgbench` — same |
+
+Both arms are held to the same `pgbench` measurement (percentiles and failover
+time, not averages). The DuckDB → DuckLake lakehouse demo (catalog in Postgres,
+Parquet on Garage S3) is a separate track under `spikes/talos-data/`.
+
 ## What you build
 - **Postgres-as-StatefulSet vs Postgres-on-KubeVirt benchmark** — `spikes/talos-stateful/`:
   CloudNativePG (StatefulSet) vs a KubeVirt VM, measured with **pgbench** (TPS +

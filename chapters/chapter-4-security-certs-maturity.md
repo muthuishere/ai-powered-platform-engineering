@@ -8,6 +8,10 @@
 > and then the **capstone**: a scored Platform Maturity Report that aggregates
 > everything the agent has learned so far.
 
+![Four capabilities aggregate through report.py into a scored A–F scorecard](../assets/diagrams/ch4-maturity-report.png)
+
+*Figure 4.1 — Five read-only checks collapse into one graded score: each finding count feeds `report.py`, which grades the platform A–F. Every number traces back to a shown command.*
+
 ## What you build
 
 - `security_drift.py` — privileged containers, runAsRoot, hostPath/hostNetwork,

@@ -9,6 +9,10 @@
 > safely — by proposing fixes the same way a human teammate would: as a reviewable
 > change in version control, not a live `kubectl apply`.
 
+![Detect → PR → merge → sync, with the audit boundary between agent and cluster](../assets/diagrams/ch5-gitops-remediation.png)
+
+*Figure 5.1 — The remediation loop. The agent detects a finding and opens a PR; it never touches the cluster. A human merges (the audit gate) and ArgoCD reconciles. Git is the audit log; the merge is the gate.*
+
 ## What you build
 
 - The GitOps hub on `ops`: **ArgoCD** + an in-cluster **Gitea** holding the

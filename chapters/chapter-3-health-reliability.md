@@ -9,6 +9,12 @@
 > (reliability — the *tenants*: probes, replicas, PDBs). Different blast surfaces,
 > same "survive a bad day" intent.
 
+|  | **Substrate** — `health.py` ("is it alive?") | **Tenant** — `reliability.py` ("survives Tuesday?") |
+|---|---|---|
+| Owner | platform team | app team |
+| Checks | nodes Ready · etcd quorum · control-plane + Talos services | probes · replicas + PDB · resource limits |
+| Output | findings count (= exit code) | findings count (= exit code) |
+
 ## What you build
 
 Two read-only capabilities, each a clean `1 script + 1 step file + 1 route` unit:

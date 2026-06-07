@@ -8,6 +8,10 @@
 > ask-which-cluster, show-every-command, cluster guards, and an auditable path
 > before any change reaches the platform.**
 
+![The guardrail pipeline; a mutating verb is blocked into a hard error](../assets/diagrams/ch2-guardrails.png)
+
+*Figure 2.1 — Reads pass the guard wall; writes (delete/apply) hit it and are blocked. Unsafe actions are structurally impossible — the model cannot talk its way around code.*
+
 ## What you build
 
 The skill skeleton that every later capability plugs into — and, crucially, the

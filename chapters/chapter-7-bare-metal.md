@@ -12,6 +12,11 @@
 > provisioning brief + a sample machine config + a fill-in TCO worksheet; the skill
 > capability is **none new**, by design.
 
+The portability proof is a single sentence: the same `report.py --cluster X`
+runs unchanged whether `X` is a Docker context or a bare-metal cluster that
+iPXE-booted, pulled its machine config, and joined. The agent can't tell the
+difference — and doesn't need to.
+
 ## What you build
 
 - A **provisioning brief** (`spikes/talos-baremetal/README.md`) — how a server

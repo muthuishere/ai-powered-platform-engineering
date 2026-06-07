@@ -10,6 +10,15 @@
 > pulling images we can't pin or trust? are any running images carrying known
 > HIGH/CRITICAL CVEs?* — and answers them continuously, with citations.
 
+| Check | What it flags | Needs a scanner? |
+|---|---|---|
+| Version currency | Talos / Kubernetes behind a target release | no |
+| Supply-chain hygiene | image with no `@sha256:` digest (**high**); un-allow-listed registry (**medium**) | no |
+| Image CVE scan | HIGH/CRITICAL CVEs — digest + CVE id + fixed version | yes (`trivy`/`grype`) |
+
+If no scanner is on `PATH`, the CVE check skips with a note and checks 1–2 still
+run. All three fold into the report's fifth dimension — evidence, not vibes.
+
 ## What you build
 
 - `vuln.py` — three checks, each grounded in a live read, each degrading

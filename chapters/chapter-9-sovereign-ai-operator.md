@@ -8,6 +8,10 @@
 > **build their own tools + run their own model**. **What you learn:** package an AI
 > operator as an installable plugin that runs entirely on your hardware.
 
+![One sealed image — local model, read-only tools, no egress](../assets/diagrams/ch9-sovereign-operator.png)
+
+*Figure 9.1 — The sovereign operator: one self-contained image with an in-process LLM, a baked-in model, the read-only tools, and an air-tight ClusterIP endpoint — sealed by a deny-egress NetworkPolicy and a read-only ServiceAccount. Nothing leaves the building.*
+
 ## What you build
 `spikes/talos-ai-operator/` — one self-contained image, **built → pushed → installed
 into Talos**:
