@@ -26,7 +26,7 @@ bare-metal Talos cluster.
 | `spikes/talos-stateful/` | Ch8 — Postgres StatefulSet (CloudNativePG) vs KubeVirt benchmark. |
 | `spikes/talos-data/` | Ch8 — DuckDB as a query runner over a DuckLake lakehouse on object storage. |
 | `spikes/talos-ai-operator/` | Ch9 — the embedded, air-gapped AI-operator plugin (mochallama + baked model + the read-only tools). |
-| `spikes/exp-*/` | 15+ self-contained experiments — each deploys, benchmarks, writes `results.json`, and tears itself down. |
+| `spikes/exp-*/` | Self-contained experiments — **7 measured** (data-format matrix, PDB, HPA, chDB) + **11 runnable** spikes; each deploys, benchmarks, writes `results.json`, and tears itself down. |
 | `spikes/exp-harness/` | Auto-grades every experiment into `COMPARISON.md`. |
 | `spikes/MEASURED-RESULTS.md` | The measured numbers that appear in the book (source of truth). |
 | `chapters/` | An agent-facing build brief for each chapter. |
