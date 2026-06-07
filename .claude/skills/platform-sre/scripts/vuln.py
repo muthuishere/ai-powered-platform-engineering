@@ -33,7 +33,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from kube import Cluster, Findings, section, set_json_mode  # noqa: E402
+from kube import Cluster, Findings, section, set_json_mode, _human  # noqa: E402
 
 # System namespaces skipped unless --all-namespaces (their images are the
 # platform's, reviewed separately).
@@ -162,7 +162,7 @@ def main() -> None:
     tver = tags[-1] if tags else ""
     k8s = c.kout("get", "nodes", "-o",
                  "jsonpath={.items[0].status.nodeInfo.kubeletVersion}", quiet=True)
-    print(f"  talos: {tver or '?'}   kubernetes: {k8s or '?'}")
+    _human(f"  talos: {tver or '?'}   kubernetes: {k8s or '?'}")
     tm, target_t = _minor(tver), _minor(args.min_talos)
     if tm and target_t and tm < target_t:
         f.add(f"Talos {tver} is below the floor {args.min_talos} — missing fixes shipped since",
@@ -209,14 +209,14 @@ def main() -> None:
     section("IMAGE CVE SCAN — HIGH/CRITICAL (needs trivy or grype)")
     scanner = find_scanner()
     if not scanner:
-        print("  !! no image scanner (trivy/grype) on PATH — skipping CVE scan (not counted)")
-        print("     install one to activate this check:  brew install trivy")
+        _human("  !! no image scanner (trivy/grype) on PATH — skipping CVE scan (not counted)")
+        _human("     install one to activate this check:  brew install trivy")
     elif images:
-        print(f"  using {scanner}; scanning up to {args.max_images} unique image(s)")
+        _human(f"  using {scanner}; scanning up to {args.max_images} unique image(s)")
         for image in sorted(images)[:args.max_images]:
             crit, high, cves = scan_image(scanner, image)
             if crit < 0:
-                print(f"  !! {image}: scan failed/timed out (not counted)")
+                _human(f"  !! {image}: scan failed/timed out (not counted)")
                 continue
             if crit + high == 0:
                 f.ok(f"{image}: no HIGH/CRITICAL CVEs")
@@ -227,7 +227,7 @@ def main() -> None:
                       evidence=f"e.g. {', '.join(cves)}" if cves else f"{scanner} scan",
                       proposed_fix="rebuild on a patched base image / bump to a fixed version")
         if len(images) > args.max_images:
-            print(f"  (capped at {args.max_images}; {len(images) - args.max_images} more not scanned)")
+            _human(f"  (capped at {args.max_images}; {len(images) - args.max_images} more not scanned)")
 
     f.exit(as_json=args.json)
 

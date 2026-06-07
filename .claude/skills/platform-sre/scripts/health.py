@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from kube import Cluster, Findings, section, set_json_mode  # noqa: E402
+from kube import Cluster, Findings, section, set_json_mode, _human  # noqa: E402
 
 
 def main() -> None:
@@ -31,7 +31,7 @@ def main() -> None:
 
     section("NODES — all should be Ready")
     nodes = c.kubectl("get", "nodes", "-o", "json")
-    print(c.kout("get", "nodes", "-o", "wide", quiet=True))
+    _human(c.kout("get", "nodes", "-o", "wide", quiet=True))
     try:
         items = json.loads(nodes.stdout)["items"]
         notready = [n["metadata"]["name"] for n in items
@@ -47,14 +47,14 @@ def main() -> None:
     section("ETCD — members healthy")
     et = c.talosctl("etcd", "status")
     if et.returncode == 0 and et.stdout.strip():
-        print(et.stdout.strip())
+        _human(et.stdout.strip())
         f.ok("etcd answered")
     else:
         f.add("etcd status query failed — control plane may be degraded", severity="critical")
 
     section("CONTROL-PLANE PODS (kube-system)")
     cp = c.kubectl("get", "pods", "-n", "kube-system", "-o", "json")
-    print(c.kout("get", "pods", "-n", "kube-system", quiet=True))
+    _human(c.kout("get", "pods", "-n", "kube-system", quiet=True))
     try:
         bad = []
         for pod in json.loads(cp.stdout)["items"]:
@@ -72,7 +72,7 @@ def main() -> None:
     svc = c.tout("services")
     for line in svc.splitlines():
         if any(k in line for k in ("NODE", "etcd", "kubelet", "apid")):
-            print(line)
+            _human(line)
 
     f.exit(as_json=args.json)
 

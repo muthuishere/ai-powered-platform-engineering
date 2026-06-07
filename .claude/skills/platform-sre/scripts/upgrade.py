@@ -38,7 +38,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from kube import Cluster, Findings, section, set_json_mode  # noqa: E402
+from kube import Cluster, Findings, section, set_json_mode, _human  # noqa: E402
 
 
 def _minor(v: str) -> "tuple[int, int] | None":
@@ -99,8 +99,8 @@ def main() -> None:
     tver = (re.findall(r"Tag:\s*(v[\d.]+)", c.tout("version")) or [""])[-1]
     k8s = c.kout("get", "nodes", "-o",
                  "jsonpath={.items[0].status.nodeInfo.kubeletVersion}", quiet=True)
-    print(f"  talos: {tver or '?'}   kubernetes: {k8s or '?'}"
-          f"   target: {args.target_k8s or '(none given)'}")
+    _human(f"  talos: {tver or '?'}   kubernetes: {k8s or '?'}"
+           f"   target: {args.target_k8s or '(none given)'}")
 
     section("NODE VERSION SKEW — is the last rolling upgrade finished?")
     versions = c.kout("get", "nodes", "-o",
@@ -116,10 +116,10 @@ def main() -> None:
     section("DEPRECATED / REMOVED API PREFLIGHT")
     scanner = find_scanner()
     if not scanner:
-        print("  !! no deprecated-API scanner (pluto/kubent) on PATH — skipping (not counted)")
-        print("     install one:  brew install fairwindsops/tap/pluto   # or kubent")
+        _human("  !! no deprecated-API scanner (pluto/kubent) on PATH — skipping (not counted)")
+        _human("     install one:  brew install fairwindsops/tap/pluto   # or kubent")
     else:
-        print(f"  using {scanner}", file=sys.stderr)
+        _human(f"  using {scanner}")
         rows = scan_deprecated(scanner, c.ctx)
         if not rows:
             f.ok("no deprecated/removed API usage detected")
@@ -133,12 +133,12 @@ def main() -> None:
                   proposed_fix="migrate the manifest to the current apiVersion before upgrading")
 
     section("UPGRADE PLAN — run these yourself (privileged; not executed here)")
-    print(f"  $ talosctl --context {c.talos_ctx} upgrade --nodes <node> --image <installer-image:vX>")
-    print(f"  $ talosctl --context {c.talos_ctx} upgrade-k8s --to {args.target_k8s or '<target>'} --dry-run")
-    print("    ^ built-in preflight: warns on removed API resources/flags before anything changes")
-    print(f"  $ talosctl --context {c.talos_ctx} upgrade-k8s --to {args.target_k8s or '<target>'}")
-    print("  A/B image upgrade is atomic; the bootloader auto-rolls-back if the new image")
-    print("  fails to boot, and `talosctl rollback` reverts to the prior slot — services intact.")
+    _human(f"  $ talosctl --context {c.talos_ctx} upgrade --nodes <node> --image <installer-image:vX>")
+    _human(f"  $ talosctl --context {c.talos_ctx} upgrade-k8s --to {args.target_k8s or '<target>'} --dry-run")
+    _human("    ^ built-in preflight: warns on removed API resources/flags before anything changes")
+    _human(f"  $ talosctl --context {c.talos_ctx} upgrade-k8s --to {args.target_k8s or '<target>'}")
+    _human("  A/B image upgrade is atomic; the bootloader auto-rolls-back if the new image")
+    _human("  fails to boot, and `talosctl rollback` reverts to the prior slot — services intact.")
 
     if args.target_k8s:
         cur, tgt = _minor(k8s), _minor(args.target_k8s)

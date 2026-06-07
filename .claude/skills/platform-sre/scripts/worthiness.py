@@ -26,7 +26,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from kube import Cluster, section, set_json_mode  # noqa: E402
+from kube import Cluster, section, set_json_mode, _human  # noqa: E402
 
 SKIP_NS = {"kube-system", "kube-public", "kube-node-lease", "argocd", "gitea",
            "cert-manager", "ingress-nginx", "monitoring"}
@@ -54,8 +54,8 @@ def main() -> None:
     n_wl, n_svc, n_hpa = len(user_wl), len(user_svcs), len(hpas)
 
     section("KUBERNETES-WORTHINESS SIGNALS")
-    print(f"  user workloads: {n_wl}   services: {n_svc}   HPAs (autoscaling): {n_hpa}   "
-          f"max replicas on any workload: {max_replicas}")
+    _human(f"  user workloads: {n_wl}   services: {n_svc}   HPAs (autoscaling): {n_hpa}   "
+           f"max replicas on any workload: {max_replicas}")
 
     scale_signal = n_hpa > 0 or max_replicas >= 3
     worthy = n_svc >= args.threshold or scale_signal
@@ -81,15 +81,15 @@ def main() -> None:
             reason.append(f"{n_hpa} HPA(s)")
         if max_replicas >= 3:
             reason.append(f"a workload at {max_replicas} replicas")
-        print(f"  ok Kubernetes looks justified here — {', '.join(reason)}.")
-        print("     You're using the elasticity/scale primitives k8s exists for.")
+        _human(f"  ok Kubernetes looks justified here — {', '.join(reason)}.")
+        _human("     You're using the elasticity/scale primitives k8s exists for.")
     else:
-        print(f"  !! Questionable: only {n_svc} service(s), no autoscaling, max {max_replicas} "
-              f"replica(s) — below the ~{args.threshold}-service heuristic and no scale-variability.")
-        print("     Consider whether ECS Fargate / Cloud Run / Azure Container Apps would")
-        print("     deliver this with far less operational overhead. k8s is always overhead;")
-        print("     pay it when you need the scale, not because it's the default.")
-        print("     (Heuristic only — isolation, multi-tenancy, or portability can still justify k8s.)")
+        _human(f"  !! Questionable: only {n_svc} service(s), no autoscaling, max {max_replicas} "
+               f"replica(s) — below the ~{args.threshold}-service heuristic and no scale-variability.")
+        _human("     Consider whether ECS Fargate / Cloud Run / Azure Container Apps would")
+        _human("     deliver this with far less operational overhead. k8s is always overhead;")
+        _human("     pay it when you need the scale, not because it's the default.")
+        _human("     (Heuristic only — isolation, multi-tenancy, or portability can still justify k8s.)")
     sys.exit(0)
 
 

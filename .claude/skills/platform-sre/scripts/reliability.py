@@ -38,13 +38,45 @@ def main() -> None:
         section("no user workloads found (deploy a lab app first).")
         f.exit(as_json=args.json)
 
-    # PDB count per namespace (cheap proxy — a real impl would match selectors).
-    pdb_ns: dict[str, int] = {}
+    # PDBs per namespace, parsed so we can MATCH selectors against a workload's
+    # pod labels (a PDB only protects a workload its selector actually covers).
+    pdb_ns: dict[str, list] = {}
     for w in workloads:
         ns = w["metadata"]["namespace"]
         if ns not in pdb_ns:
-            out = c.kout("get", "pdb", "-n", ns, "--no-headers", quiet=True)
-            pdb_ns[ns] = len([l for l in out.splitlines() if l.strip()])
+            raw_pdb = c.kubectl("get", "pdb", "-n", ns, "-o", "json", quiet=True).stdout
+            try:
+                pdb_ns[ns] = json.loads(raw_pdb or '{"items":[]}')["items"]
+            except Exception:
+                pdb_ns[ns] = []
+
+    def pdb_covers(ns: str, pod_labels: dict) -> bool:
+        """True iff some PDB in ns has a selector that matches the pod labels."""
+        for pdb in pdb_ns.get(ns, []):
+            sel = (pdb.get("spec") or {}).get("selector") or {}
+            match_labels = sel.get("matchLabels") or {}
+            match_exprs = sel.get("matchExpressions") or []
+            # An empty selector ({}) matches everything; a missing selector matches nothing.
+            if not match_labels and not match_exprs and "selector" in (pdb.get("spec") or {}):
+                return True
+            if all(pod_labels.get(k) == v for k, v in match_labels.items()) and \
+               _exprs_match(match_exprs, pod_labels) and (match_labels or match_exprs):
+                return True
+        return False
+
+    def _exprs_match(exprs: list, labels: dict) -> bool:
+        for e in exprs:
+            key, op, vals = e.get("key"), e.get("operator"), e.get("values") or []
+            present = key in labels
+            if op == "In" and labels.get(key) not in vals:
+                return False
+            if op == "NotIn" and labels.get(key) in vals:
+                return False
+            if op == "Exists" and not present:
+                return False
+            if op == "DoesNotExist" and present:
+                return False
+        return True
 
     for w in workloads:
         ns = w["metadata"]["namespace"]
@@ -68,14 +100,18 @@ def main() -> None:
         else:
             f.ok("resource limits present")
 
+        pod_labels = (spec["template"]["metadata"].get("labels") or {})
         if replicas <= 1:
-            if pdb_ns.get(ns, 0) == 0:
-                f.add(f"{ns}/{name}: single replica AND no PodDisruptionBudget (node drain = outage)",
+            if not pdb_covers(ns, pod_labels):
+                n_pdb = len(pdb_ns.get(ns, []))
+                detail = (f"{n_pdb} PDB(s) in ns {ns} but none whose selector matches this workload's "
+                          f"pod labels {pod_labels}") if n_pdb else f"0 PDBs in ns {ns}"
+                f.add(f"{ns}/{name}: single replica AND no PodDisruptionBudget covering it (node drain = outage)",
                       severity="high",
-                      evidence=f"{kind}/{name} replicas<=1 and 0 PDBs in ns {ns}",
-                      proposed_fix="add a PodDisruptionBudget (minAvailable: 1) — see remediate.py --fix missing-pdb")
+                      evidence=f"{kind}/{name} replicas<=1 and {detail}",
+                      proposed_fix="add a PodDisruptionBudget (minAvailable: 1) whose selector matches this workload — see remediate.py --fix missing-pdb")
             else:
-                f.ok(f"single replica but a PDB exists in {ns} (verify it selects this app)")
+                f.ok(f"single replica but a PDB selector covers {name} in {ns}")
         else:
             f.ok(f"replicas={replicas} (HA)")
 
