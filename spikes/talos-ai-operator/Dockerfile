@@ -72,10 +72,13 @@ COPY scripts/ /opt/platform-sre/scripts/
 COPY --from=build  /app.jar     /app/app.jar
 COPY --from=model  /models      /models
 
-# Non-root.
-RUN useradd -r -u 10001 -d /app operator \
-    && chown -R operator:operator /app /models /opt/platform-sre
-USER operator
+# Non-root. The base image (Ubuntu Noble JRE) already ships a group named
+# `operator`, so create our own group/uid explicitly and ignore a pre-existing
+# group name rather than letting useradd's default group creation fail (exit 9).
+RUN groupadd -r -g 10001 aiop \
+    && useradd -r -u 10001 -g aiop -d /app aiop \
+    && chown -R aiop:aiop /app /models /opt/platform-sre
+USER aiop
 
 WORKDIR /app
 EXPOSE 8080
