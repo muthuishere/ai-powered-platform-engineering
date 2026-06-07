@@ -1,0 +1,15 @@
+{
+  "spike": "exp-duckdb-iceberg",
+  "cluster": "admin@cherry-bench",
+  "metrics": {
+    "ingest_s": 10.4492,
+    "scan_rows_per_s": 17092049,
+    "query_p50_ms": 5.148,
+    "query_p95_ms": 6.750,
+    "on_disk_bytes": 0,
+    "compression_ratio": null,
+    "time_travel_ms": 5.036
+  },
+  "notes": "DuckDB 1.5.3 reads an Iceberg table created by pyiceberg 0.9.1 (SqlCatalog/SQLite) on MinIO; writes go through pyiceberg because DuckDB's Iceberg write path targets REST catalogs. Lab numbers are modest — comparisons matter, not absolutes. compression_ratio is null: no raw-vs-Parquet baseline measured in this spike.",
+  "ran_at": "2026-06-07T09:58:29Z"
+}

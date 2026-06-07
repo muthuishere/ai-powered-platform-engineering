@@ -1,0 +1,19 @@
+{
+  "spike": "exp-arrow-flight",
+  "cluster": "cherry-bench",
+  "metrics": {
+    "scan_rows_per_s": 34758070,
+    "query_p50_ms": 149.39,
+    "query_p95_ms": 160.856,
+    "query_min_ms": 143.851,
+    "query_mean_ms": 150.041,
+    "in_memory_bytes": 160000051,
+    "feather_bytes": 17732986,
+    "parquet_bytes": 20507074,
+    "on_disk_bytes": 17732986,
+    "rows": 5000000,
+    "iters": 20
+  },
+  "notes": "measured in-cluster over Arrow Flight DoGet against the flight-server Service",
+  "ran_at": "2026-06-07T09:59:56Z"
+}

@@ -1,8 +1,8 @@
 # Experiment Comparison — auto-graded
 
-_Generated 2026-06-07T09:39:20Z by `aggregate.py`._
+_Generated 2026-06-07T10:14:27Z by `aggregate.py`._
 
-0/8 spikes have measured results. Numbers are measured on real Talos clusters (bare-metal QEMU/KVM); un-run metrics are shown as not-run, never invented.
+4/8 spikes have measured results. Numbers are measured on real Talos clusters (bare-metal QEMU/KVM); un-run metrics are shown as not-run, never invented.
 
 ## Data-format matrix
 
@@ -10,11 +10,11 @@ Parquet vs Iceberg vs DuckLake vs Vortex vs Arrow/Feather over MinIO. Winner per
 
 | format | on_disk_bytes | compression_ratio | ingest_s | scan_rows_per_s | query_p95_ms |
 |---|---|---|---|---|---|
-| **Parquet** | _not run_ | _not run_ | _not run_ | _not run_ | _not run_ |
-| **Iceberg** | _not run_ | _not run_ | _not run_ | _not run_ | _not run_ |
+| **Iceberg** | 0 B **(best)** | — | 10.45 s | 17,092,049/s | 6.75 ms **(best)** |
+| **Arrow/Feather** | 16.91 MiB | — | — | 34,758,070/s **(best)** | 160.86 ms |
+| **Vortex** | 22.33 MiB | 10.18x **(best)** | 1.93 s **(best)** | 30,622,221/s | — |
+| **Parquet** | 88.66 MiB | 7.60x | 15.94 s | 8,000/s | 237.00 ms |
 | **DuckLake** | _not run_ | _not run_ | _not run_ | _not run_ | _not run_ |
-| **Vortex** | _not run_ | _not run_ | _not run_ | _not run_ | _not run_ |
-| **Arrow/Feather** | _not run_ | _not run_ | _not run_ | _not run_ | _not run_ |
 
 ## Postgres: StatefulSet vs KubeVirt
 
@@ -41,11 +41,7 @@ Spikes whose `results.json` is absent, empty, malformed, or all-null. Per the sp
 
 | spike | reason |
 |---|---|
-| `exp-duckdb-parquet` | results.json absent (spike not yet run) |
-| `exp-duckdb-iceberg` | results.json absent (spike not yet run) |
 | `exp-ducklake` | results.json absent (spike not yet run) |
-| `exp-vortex` | results.json absent (spike not yet run) |
-| `exp-arrow-flight` | results.json absent (spike not yet run) |
 | `exp-pg-statefulset` | results.json absent (spike not yet run) |
 | `exp-pg-ss-vs-kubevirt` | results.json absent (spike not yet run) |
 | `exp-mochallama-minio-operator` | results.json absent (spike not yet run) |
