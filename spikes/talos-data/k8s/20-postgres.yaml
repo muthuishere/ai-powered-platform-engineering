@@ -1,0 +1,81 @@
+# Postgres — the DuckLake CATALOG. This holds table metadata, snapshots, schema
+# history. It is the stateful heart of the lakehouse: lose this and you lose the
+# map to your Parquet files (the data survives on S3, but as orphaned objects).
+# THIS is what the platform-sre review cares most about backing up. See README.
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ducklake-pg
+  namespace: talos-data
+type: Opaque
+stringData:
+  # DEMO password — change for anything real.
+  POSTGRES_DB: ducklake
+  POSTGRES_USER: ducklake
+  POSTGRES_PASSWORD: ducklake
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ducklake-pg
+  namespace: talos-data
+  labels:
+    app: ducklake-pg
+spec:
+  selector:
+    app: ducklake-pg
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: ducklake-pg
+  namespace: talos-data
+spec:
+  serviceName: ducklake-pg
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ducklake-pg
+  template:
+    metadata:
+      labels:
+        app: ducklake-pg
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:17
+          envFrom:
+            - secretRef:
+                name: ducklake-pg
+          env:
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - containerPort: 5432
+              name: postgres
+          volumeMounts:
+            - name: pgdata
+              mountPath: /var/lib/postgresql/data
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "ducklake", "-d", "ducklake"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "ducklake", "-d", "ducklake"]
+            initialDelaySeconds: 15
+            periodSeconds: 20
+  volumeClaimTemplates:
+    - metadata:
+        name: pgdata
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 2Gi

@@ -1,0 +1,51 @@
+{{- if .Values.networkPolicy.enabled -}}
+# Air-tight network posture:
+#   * INGRESS  — only from the listed namespaces, only to :8080.
+#   * EGRESS   — denied by default; opened narrowly for DNS and the Kubernetes
+#                API server so the read-only tools can get/list/watch. NO general
+#                internet egress: the model is baked into the image, so the pod
+#                never needs to reach Hugging Face or any external LLM service.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "talos-ai-operator.fullname" . }}
+  labels:
+    {{- include "talos-ai-operator.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "talos-ai-operator.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        {{- range .Values.networkPolicy.allowedNamespaces }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ . }}
+        {{- end }}
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    {{- if .Values.networkPolicy.allowDnsEgress }}
+    # DNS (kube-dns / CoreDNS) so in-cluster names resolve.
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    {{- end }}
+    {{- if .Values.networkPolicy.allowApiServerEgress }}
+    # Kubernetes API server (read-only get/list/watch). Ports cover the common
+    # in-cluster apiserver endpoints (443 service, 6443 node).
+    - ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 6443
+    {{- end }}
+{{- end }}

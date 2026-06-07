@@ -1,0 +1,126 @@
+version: '3'
+
+# Talos AI Operator — build the fat (model-baked) image, push it to the in-cluster
+# Gitea container registry on `ops`, install via Helm, and smoke-test the
+# air-tight OpenAI endpoint + a one-shot SRE review.
+#
+#   task build    # docker build the fat image (GGUF baked in at build time)
+#   task push     # push to the Gitea registry on ops
+#   task install  # helm upgrade --install (or commit to the GitOps repo for ArgoCD)
+#   task smoke    # port-forward + curl /v1/chat/completions + POST /review
+
+vars:
+  # Image coordinates. REGISTRY is the Gitea registry on `ops`; over a
+  # port-forward it is localhost:3000 (see `task registry:port-forward`).
+  REGISTRY: '{{.REGISTRY | default "localhost:3000"}}'
+  IMAGE_REPO: '{{.IMAGE_REPO | default "platform/talos-ai-operator"}}'
+  TAG: '{{.TAG | default "0.1.0"}}'
+  IMAGE: '{{.REGISTRY}}/{{.IMAGE_REPO}}:{{.TAG}}'
+
+  # Model baked into the image at BUILD time (air-gapped at runtime). Override to
+  # ship a bigger GGUF on real hardware.
+  MODEL_FILENAME: '{{.MODEL_FILENAME | default "qwen2.5-3b-instruct-q4_k_m.gguf"}}'
+  MODEL_URL: '{{.MODEL_URL | default "https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF/resolve/main/qwen2.5-3b-instruct-q4_k_m.gguf"}}'
+
+  # Cluster CLIs baked in.
+  KUBECTL_VERSION: '{{.KUBECTL_VERSION | default "v1.31.0"}}'
+  TALOSCTL_VERSION: '{{.TALOSCTL_VERSION | default "v1.8.0"}}'
+
+  # Install targets.
+  NAMESPACE: '{{.NAMESPACE | default "platform-sre"}}'
+  RELEASE: '{{.RELEASE | default "aiop"}}'
+  CONTEXT: '{{.CONTEXT | default "admin@ops"}}'
+
+  # Gitea registry port-forward (registry == the Gitea HTTP service on ops).
+  GITEA_NS: '{{.GITEA_NS | default "gitea"}}'
+  GITEA_SVC: '{{.GITEA_SVC | default "gitea-http"}}'
+
+tasks:
+  default:
+    cmds:
+      - task --list
+    silent: true
+
+  build:
+    desc: docker build the fat image with the GGUF baked in at build time
+    cmds:
+      - >-
+        docker build
+        --build-arg MODEL_FILENAME={{.MODEL_FILENAME}}
+        --build-arg MODEL_URL={{.MODEL_URL}}
+        --build-arg KUBECTL_VERSION={{.KUBECTL_VERSION}}
+        --build-arg TALOSCTL_VERSION={{.TALOSCTL_VERSION}}
+        -t {{.IMAGE}}
+        .
+      - echo "built {{.IMAGE}} (model {{.MODEL_FILENAME}} baked in)"
+
+  push:
+    desc: push the fat image to the Gitea container registry on ops
+    cmds:
+      - docker push {{.IMAGE}}
+      - echo "pushed {{.IMAGE}}"
+
+  registry:port-forward:
+    desc: port-forward the in-cluster Gitea registry to localhost:3000 (run in another shell before push)
+    cmds:
+      - kubectl --context {{.CONTEXT}} -n {{.GITEA_NS}} port-forward svc/{{.GITEA_SVC}} 3000:3000
+
+  install:
+    desc: helm upgrade --install into the target cluster (or commit for ArgoCD)
+    cmds:
+      - kubectl --context {{.CONTEXT}} get ns {{.NAMESPACE}} >/dev/null 2>&1 || kubectl --context {{.CONTEXT}} create ns {{.NAMESPACE}}
+      - >-
+        helm --kube-context {{.CONTEXT}} upgrade --install {{.RELEASE}} ./helm/talos-ai-operator
+        -n {{.NAMESPACE}}
+        --set image.repository={{.REGISTRY}}/{{.IMAGE_REPO}}
+        --set image.tag={{.TAG}}
+        --set model.filename={{.MODEL_FILENAME}}
+      - echo "installed release {{.RELEASE}} in {{.NAMESPACE}} on {{.CONTEXT}}"
+
+  lint:
+    desc: helm lint + template render (no cluster needed)
+    cmds:
+      - helm lint ./helm/talos-ai-operator
+      - helm template {{.RELEASE}} ./helm/talos-ai-operator >/dev/null && echo "template OK"
+
+  smoke:
+    desc: port-forward, then curl /v1/chat/completions (system+user+tool) and POST /review
+    cmds:
+      - |
+        set -e
+        kubectl --context {{.CONTEXT}} -n {{.NAMESPACE}} rollout status \
+          deploy/{{.RELEASE}}-talos-ai-operator --timeout=600s
+        kubectl --context {{.CONTEXT}} -n {{.NAMESPACE}} \
+          port-forward svc/{{.RELEASE}}-talos-ai-operator 8080:8080 >/tmp/aiop-pf.log 2>&1 &
+        PF_PID=$!
+        trap 'kill $PF_PID 2>/dev/null || true' EXIT
+        # wait for the model to report READY
+        for i in $(seq 1 60); do
+          if curl -fsS localhost:8080/actuator/health 2>/dev/null | grep -q '"status":"UP"'; then
+            echo "model READY"; break
+          fi
+          echo "waiting for model READY ($i)..."; sleep 10
+        done
+        echo "--- /v1/chat/completions: system + user + a tool ---"
+        curl -sS localhost:8080/v1/chat/completions \
+          -H 'Content-Type: application/json' \
+          -d '{
+            "messages":[
+              {"role":"system","content":"You are platform-sre, a read-only Talos SRE operator."},
+              {"role":"user","content":"Check the health of the dev cluster."}
+            ],
+            "tools":[{"type":"function","function":{
+              "name":"clusterHealth",
+              "description":"Run a Talos cluster health sweep. Read-only.",
+              "parameters":{"type":"object","properties":{"cluster":{"type":"string"}},"required":["cluster"]}
+            }}]
+          }'
+        echo
+        echo "--- one-shot agent review of dev ---"
+        curl -sS -X POST 'localhost:8080/review?cluster=dev'
+        echo
+
+  clean:
+    desc: remove the local image
+    cmds:
+      - docker rmi {{.IMAGE}} 2>/dev/null || true

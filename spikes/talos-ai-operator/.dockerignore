@@ -1,0 +1,11 @@
+# Build output and local cruft — the Dockerfile builds the jar from source in
+# the build stage, so none of this needs to enter the context.
+build/
+.gradle/
+*.iml
+.idea/
+.DS_Store
+helm/
+README.md
+DESIGN.md
+Taskfile.yml

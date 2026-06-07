@@ -1,0 +1,60 @@
+// Talos AI Operator — Spring Boot agent app (book Ch9 capstone).
+//
+// Embeds mochallama (local tool-calling LLM, in-process via Project Panama FFM)
+// as a LIBRARY, plus the Spring AI adapter so the @Tool platform-sre methods are
+// orchestrated by the baked-in GGUF. The starter autoconfigures the OpenAI
+// /v1/chat/completions controller (the air-tight shared endpoint).
+//
+// Versions are taken from the mochallama repo README/docs (0.1.6) and the
+// spring-ai example (Spring AI 1.0.8). Do not bump blindly — the spring-ai
+// adapter pins ChatModel/ChatClient APIs to that line.
+plugins {
+    id 'org.springframework.boot' version '3.3.1'
+    id 'io.spring.dependency-management' version '1.1.5'
+    id 'java'
+}
+
+group = 'dev.platformsre'
+version = '0.1.0'
+
+repositories { mavenCentral() }
+
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(22) }
+}
+
+ext {
+    mochallamaVersion = '0.1.6'   // from mochallama README + docs/specs/models.md
+    springAiVersion   = '1.0.8'   // from mochallama examples/spring-ai/build.gradle
+}
+
+dependencyManagement {
+    imports { mavenBom "org.springframework.ai:spring-ai-bom:${springAiVersion}" }
+}
+
+dependencies {
+    // mochallama, embedded as a library (no daemon, no sidecar):
+    //   * starter   -> autoconfigures LlamaCppService + OpenAI /v1/chat/completions controller
+    //   * spring-ai -> ChatModel/ChatClient adapter so @Tool methods drive the local model
+    //   * core-platform (runtimeOnly) -> the prebuilt llama.cpp native libs for the image's OS/arch
+    implementation "io.github.deemwario:mochallama-spring-boot-starter:${mochallamaVersion}"
+    implementation "io.github.deemwario:mochallama-spring-ai:${mochallamaVersion}"
+    runtimeOnly    "io.github.deemwario:mochallama-core-platform:${mochallamaVersion}"
+
+    // Spring AI client-chat: ChatClient / ChatModel + the tool-calling API the
+    // adapter maps @Tool -> ToolDefinition through. Version supplied by the BOM.
+    implementation 'org.springframework.ai:spring-ai-client-chat'
+
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}
+
+tasks.named('test') { useJUnitPlatform() }
+
+// FFM (Panama) needs native-access; the Vector API module is incubator on JDK 22.
+// These flags are also baked into the Dockerfile ENTRYPOINT for runtime.
+tasks.named('bootRun') {
+    jvmArgs = ['--enable-native-access=ALL-UNNAMED', '--add-modules=jdk.incubator.vector']
+}

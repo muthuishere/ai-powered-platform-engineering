@@ -1,0 +1,117 @@
+# The demo, in-cluster. DuckDB is a stateless query runner: this Job spins up,
+# attaches the Postgres catalog + Garage bucket, creates/queries a table, shows
+# time travel, and exits. All durable state stays in Postgres + Garage.
+#
+# lake.sql is shipped as a ConfigMap so this directory is self-contained. It is the
+# SAME script as demo/lake.sql — if you edit one, sync the other (or generate this
+# CM with `kubectl create configmap ducklake-demo-sql --from-file=demo/lake.sql`).
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ducklake-demo-sql
+  namespace: talos-data
+data:
+  # Placeholder tokens (@VAR@) are substituted from env by the container's sed step
+  # before DuckDB sees the SQL — ATTACH/CREATE SECRET take literals, not expressions.
+  lake.sql: |
+    INSTALL ducklake; INSTALL httpfs; INSTALL postgres;
+    LOAD ducklake; LOAD httpfs; LOAD postgres;
+
+    CREATE OR REPLACE SECRET garage (
+        TYPE s3, KEY_ID '@S3_KEY_ID@', SECRET '@S3_SECRET@',
+        ENDPOINT '@S3_ENDPOINT@', URL_STYLE 'path',
+        USE_SSL @S3_USE_SSL@
+    );
+
+    ATTACH 'ducklake:postgres:host=@PG_HOST@ port=@PG_PORT@ dbname=@PG_DB@ user=@PG_USER@ password=@PG_PASSWORD@'
+        AS lake (DATA_PATH 's3://@S3_BUCKET@/lake/');
+    USE lake;
+
+    CREATE TABLE IF NOT EXISTS trips (
+        id INTEGER, city VARCHAR, fare DECIMAL(8,2), booked_at TIMESTAMP
+    );
+    INSERT INTO trips VALUES
+        (1,'chennai',240.50,TIMESTAMP '2026-06-01 09:15:00'),
+        (2,'bengaluru',310.00,TIMESTAMP '2026-06-01 09:40:00'),
+        (3,'chennai',180.75,TIMESTAMP '2026-06-01 10:05:00');
+    INSERT INTO trips VALUES (4,'mumbai',420.00,TIMESTAMP '2026-06-02 08:00:00');
+
+    SELECT '== current state ==' AS step;
+    SELECT city, count(*) AS trips, sum(fare) AS revenue
+    FROM trips GROUP BY city ORDER BY revenue DESC;
+
+    SELECT '== snapshots (from the SQL catalog) ==' AS step;
+    SELECT snapshot_id, snapshot_time, schema_version, changes
+    FROM ducklake_snapshots('lake') ORDER BY snapshot_id;
+
+    SELECT '== time travel AT (VERSION => 2) ==' AS step;
+    SELECT count(*) AS rows_at_v2 FROM trips AT (VERSION => 2);
+
+    SELECT '== data files on S3 ==' AS step;
+    SELECT data_file, data_file_size_bytes
+    FROM ducklake_list_files('lake','trips') ORDER BY data_file;
+
+    SELECT '== done ==' AS step;
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ducklake-demo
+  namespace: talos-data
+spec:
+  backoffLimit: 2
+  template:
+    metadata:
+      labels:
+        app: ducklake-demo
+    spec:
+      restartPolicy: Never
+      # Wait for Postgres before the query runner starts.
+      initContainers:
+        - name: wait-pg
+          image: postgres:17
+          command: ["/bin/sh", "-c"]
+          args:
+            - until pg_isready -h ducklake-pg -p 5432 -U ducklake; do sleep 2; done
+      containers:
+        - name: duckdb
+          # DuckDB CLI image. Pin a tag that ships DuckLake 1.0 (>= the 2026 line).
+          image: davidgasquez/duckdb:latest
+          command: ["/bin/sh", "-c"]
+          args:
+            # Render @VAR@ tokens from env, then pipe into an in-memory DuckDB.
+            - |
+              sed \
+                -e "s|@PG_HOST@|${PG_HOST}|g" \
+                -e "s|@PG_PORT@|${PG_PORT}|g" \
+                -e "s|@PG_DB@|${PG_DB}|g" \
+                -e "s|@PG_USER@|${PG_USER}|g" \
+                -e "s|@PG_PASSWORD@|${PG_PASSWORD}|g" \
+                -e "s|@S3_KEY_ID@|${S3_KEY_ID}|g" \
+                -e "s|@S3_SECRET@|${S3_SECRET}|g" \
+                -e "s|@S3_ENDPOINT@|${S3_ENDPOINT}|g" \
+                -e "s|@S3_USE_SSL@|${S3_USE_SSL}|g" \
+                -e "s|@S3_BUCKET@|${S3_BUCKET}|g" \
+                /sql/lake.sql | duckdb :memory:
+          env:
+            - name: PG_HOST
+              value: "ducklake-pg"
+            - name: PG_PORT
+              value: "5432"
+            - name: PG_DB
+              valueFrom: { secretKeyRef: { name: ducklake-pg, key: POSTGRES_DB } }
+            - name: PG_USER
+              valueFrom: { secretKeyRef: { name: ducklake-pg, key: POSTGRES_USER } }
+            - name: PG_PASSWORD
+              valueFrom: { secretKeyRef: { name: ducklake-pg, key: POSTGRES_PASSWORD } }
+          envFrom:
+            - secretRef:
+                name: ducklake-s3
+          volumeMounts:
+            - name: sql
+              mountPath: /sql
+      volumes:
+        - name: sql
+          configMap:
+            name: ducklake-demo-sql

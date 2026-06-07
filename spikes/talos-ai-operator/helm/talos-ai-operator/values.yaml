@@ -1,0 +1,85 @@
+# Default values for talos-ai-operator.
+
+image:
+  # The fat image pushed to the in-cluster Gitea registry on `ops`.
+  repository: gitea.ops.svc.cluster.local:5000/platform/talos-ai-operator
+  tag: "0.1.0"
+  pullPolicy: IfNotPresent
+
+# Number of replicas. CPU inference is heavy; default to a single replica in the
+# lab. Scale only on a sized node / GPU.
+replicaCount: 1
+
+# The baked-in model's filename — must match the GGUF compiled into /models at
+# image build time (Dockerfile MODEL_FILENAME build arg). Surfaced here only as
+# the MODEL_FILENAME env so the app resolves file:///models/<filename>.
+model:
+  filename: "qwen2.5-3b-instruct-q4_k_m.gguf"
+  contextSize: 8192
+  threads: 6
+  temperature: "0.2"
+
+# Optional bearer token for the OpenAI endpoint. When `token` is set a Secret is
+# created and AIOP_AUTH_TOKEN is injected; when empty the endpoint is open within
+# the cluster (defended by the NetworkPolicy + ClusterIP-only Service).
+auth:
+  enabled: false
+  token: ""
+  # Or reference a pre-existing Secret instead of templating one:
+  existingSecret: ""
+  secretKey: "token"
+
+service:
+  type: ClusterIP
+  port: 8080
+
+# Sized for CPU inference of a ~2 GB Q4 model. Tune for real hardware.
+resources:
+  requests:
+    cpu: "2"
+    memory: "4Gi"
+  limits:
+    cpu: "6"
+    memory: "8Gi"
+
+# Read-only RBAC: a ClusterRole with get/list/watch only, cluster-wide, so the
+# tools can inspect any namespace. No create/update/delete/patch — ever.
+rbac:
+  create: true
+
+serviceAccount:
+  create: true
+  name: ""
+
+# NetworkPolicy: deny all egress (air-tight — the model is baked in, the tools
+# only talk to the in-cluster API server which is allowed below), and allow
+# ingress only from the listed namespaces.
+networkPolicy:
+  enabled: true
+  # Namespaces allowed to call the /v1/chat/completions endpoint.
+  allowedNamespaces:
+    - default
+  # Allow egress to the Kubernetes API server (kubectl get/list/watch). The
+  # apiserver is typically reachable on 443/6443; both are permitted.
+  allowApiServerEgress: true
+  # Allow DNS so in-cluster service names resolve.
+  allowDnsEgress: true
+
+# Readiness/liveness probe on the mochallama Actuator health endpoint, which
+# only reports UP once the model state is READY.
+probes:
+  readiness:
+    path: /actuator/health/readiness
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    failureThreshold: 30   # model load on CPU is slow; be patient
+  liveness:
+    path: /actuator/health/liveness
+    initialDelaySeconds: 60
+    periodSeconds: 20
+    failureThreshold: 6
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+podAnnotations: {}
