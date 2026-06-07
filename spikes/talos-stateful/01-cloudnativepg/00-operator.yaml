@@ -1,0 +1,25 @@
+# CloudNativePG operator (Arm A).
+#
+# This file is a POINTER, not a vendored copy: the operator is a single large
+# upstream manifest that's released per-version. Keeping a stale copy in the repo
+# rots; instead apply the pinned upstream release directly.
+#
+#   kubectl --context admin@dev apply -f \
+#     https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/v1.24.1/releases/cnpg-1.24.1.yaml
+#
+# Pinned version: v1.24.1  (CloudNativePG 1.24 LTS line; Postgres 13-17).
+# Bump by changing both the tag in the URL and the digest comment below, then
+# re-apply. Release list: https://github.com/cloudnative-pg/cloudnative-pg/releases
+#
+# We can't `kubectl apply -f` a remote URL from inside a static YAML, so this
+# stub just documents the command and creates the namespace the operator expects.
+# The README's install step runs the real apply.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cnpg-system
+  labels:
+    app.kubernetes.io/name: cloudnative-pg
+    # NOTE: applying the upstream release manifest (see header) also creates this
+    # namespace; this stub just makes `apply -f 00-operator.yaml` non-empty and
+    # documents the pin. Run the upstream apply from the README for the operator.

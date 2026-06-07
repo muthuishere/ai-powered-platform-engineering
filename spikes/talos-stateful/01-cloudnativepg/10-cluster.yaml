@@ -1,0 +1,75 @@
+# Arm A — a 3-instance CloudNativePG Cluster (1 primary + 2 replicas).
+#
+# Everything that MUST be identical to the KubeVirt arm (02-) is pinned here:
+# Postgres version, storageClass, CPU, RAM, and the postgresql.conf knobs.
+# If you change one of these, change it in BOTH arms or you're benchmarking the
+# difference instead of the runtime model.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: pgbench-ss
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: pg
+  namespace: pgbench-ss
+spec:
+  instances: 3                       # 1 primary + 2 streaming replicas
+
+  # --- HELD CONSTANT: Postgres version -----------------------------------------
+  # Same major+minor as the VM arm. Pin it; don't float.
+  imageName: ghcr.io/cloudnative-pg/postgresql:17.2
+
+  # --- HELD CONSTANT: CPU + RAM ------------------------------------------------
+  # The VM arm gets the SAME 1 vCPU / 1Gi. Keep requests == limits so the VM
+  # (which has fixed sizing) is a fair match.
+  resources:
+    requests: {cpu: "1", memory: 1Gi}
+    limits:   {cpu: "1", memory: 1Gi}
+
+  # --- HELD CONSTANT: Postgres config ------------------------------------------
+  # Mirror these EXACT values in the VM's postgresql.conf (02-/10-postgres-config).
+  postgresql:
+    parameters:
+      max_connections: "100"
+      shared_buffers: "256MB"
+      effective_cache_size: "768MB"
+      wal_level: "replica"
+      fsync: "on"
+      synchronous_commit: "on"       # durable commits; set the same in both arms
+      max_wal_size: "1GB"
+      checkpoint_completion_target: "0.9"
+
+  # --- HELD CONSTANT: storage --------------------------------------------------
+  # Set storageClassName to the SAME class the VM PVC uses. On the OrbStack lab,
+  # check `kubectl get storageclass`; commenting the field out uses the cluster
+  # default. Whatever you choose, label it in RESULTS-TEMPLATE.md.
+  storage:
+    size: 5Gi
+    # storageClassName: local-path   # <-- set to your lab's class; MUST match Arm B
+
+  # Failover behaviour: this is the application-level failover we time in
+  # bench/failover-test.sh. CNPG promotes a replica and re-points the -rw Service.
+  primaryUpdateStrategy: unsupervised
+
+  # Bootstrap an empty database + a benchmark role.
+  bootstrap:
+    initdb:
+      database: bench
+      owner: bench
+      # password comes from the secret below
+      secret:
+        name: pg-bench-cred
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: pg-bench-cred
+  namespace: pgbench-ss
+type: kubernetes.io/basic-auth
+stringData:
+  # spike only — not a real secret. pgbench connects with these.
+  username: bench
+  password: bench-spike-123

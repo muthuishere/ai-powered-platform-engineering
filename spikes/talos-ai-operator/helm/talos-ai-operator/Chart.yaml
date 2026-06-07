@@ -1,0 +1,20 @@
+apiVersion: v2
+name: talos-ai-operator
+description: >-
+  Air-tight, on-prem AI SRE operator for Talos Linux clusters. Embeds mochallama
+  (a local tool-calling LLM, in-process, model baked into the image) plus the
+  read-only platform-sre capabilities, and exposes an OpenAI-compatible
+  /v1/chat/completions endpoint as a ClusterIP service. No egress, no model
+  download, no external LLM daemon.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - talos
+  - sre
+  - llm
+  - mochallama
+  - air-gapped
+home: https://github.com/muthuishere/ai-powered-platform-engineering
+maintainers:
+  - name: Muthukumaran Navaneethakrishnan

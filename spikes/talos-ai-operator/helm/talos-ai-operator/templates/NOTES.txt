@@ -1,0 +1,24 @@
+talos-ai-operator installed as {{ include "talos-ai-operator.fullname" . }} in namespace {{ .Release.Namespace }}.
+
+The embedded model loads asynchronously on CPU — readiness will stay NotReady
+until the GGUF ({{ .Values.model.filename }}) is loaded (state: READY). This can
+take a while on the first start; watch:
+
+  kubectl -n {{ .Release.Namespace }} rollout status deploy/{{ include "talos-ai-operator.fullname" . }}
+
+Reach the air-tight OpenAI-compatible endpoint (ClusterIP, port {{ .Values.service.port }}):
+
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "talos-ai-operator.fullname" . }} {{ .Values.service.port }}:{{ .Values.service.port }}
+  curl -s localhost:{{ .Values.service.port }}/v1/chat/completions \
+    -H 'Content-Type: application/json' \
+{{- if .Values.auth.enabled }}
+    -H 'Authorization: Bearer <token>' \
+{{- end }}
+    -d '{"messages":[{"role":"user","content":"hello in 5 words"}]}'
+
+One-shot SRE review (the on-board agent orchestrates the read-only tools):
+
+  curl -s -X POST 'localhost:{{ .Values.service.port }}/review?cluster=dev'
+
+This workload is READ-ONLY (RBAC: get/list/watch) and air-tight (NetworkPolicy
+denies general egress; the model is baked in — no download at runtime).

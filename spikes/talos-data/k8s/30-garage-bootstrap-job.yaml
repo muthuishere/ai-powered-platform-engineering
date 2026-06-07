@@ -1,0 +1,70 @@
+# One-time Garage bootstrap: assign a layout (so the single node accepts writes),
+# create an access key, create the bucket, grant the key access. Garage will not
+# serve S3 until a layout is applied — this is the equivalent of `mkfs`.
+#
+# It writes the resulting key id + secret into the `ducklake-s3` Secret so the demo
+# Job can consume them. Re-running is safe-ish but will create a NEW key each time;
+# for GitOps you'd normally bootstrap once out-of-band and commit the key to a
+# sealed-secret. This Job is here to make the lab one-command.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: garage-bootstrap
+  namespace: talos-data
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app: garage-bootstrap
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: garage-bootstrap
+      containers:
+        - name: bootstrap
+          image: dxflrs/garage:v2.3.0
+          env:
+            - name: GARAGE_RPC_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: garage-secrets
+                  key: rpc_secret
+            - name: GARAGE_ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: garage-secrets
+                  key: admin_token
+          # The garage CLI talks to the server over RPC; point it at the Service.
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              export GARAGE_RPC_HOST="garage:3901"
+
+              echo "waiting for garage to be reachable..."
+              until garage status >/dev/null 2>&1; do sleep 2; done
+
+              NODE_ID="$(garage status | awk 'NR==3 {print $1}')"
+              echo "node id: ${NODE_ID}"
+
+              # Assign all capacity to one zone, apply the layout.
+              garage layout assign -z dc1 -c 5G "${NODE_ID}" || true
+              garage layout apply --version 1 || true
+
+              # Idempotent-ish bucket + key.
+              garage bucket create ducklake || true
+              KEY_JSON="$(garage key create ducklake-app-key 2>/dev/null || true)"
+              garage bucket allow --read --write --owner ducklake --key ducklake-app-key
+
+              # Surface the key so a human can copy it into the ducklake-s3 Secret.
+              echo "==== COPY THESE INTO secret/ducklake-s3 ===="
+              garage key info ducklake-app-key --show-secret
+              echo "============================================"
+---
+# Minimal RBAC if you later want the job to write the Secret itself; for the lab we
+# just print the key and let a human create the Secret (see 40-ducklake-s3-secret).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: garage-bootstrap
+  namespace: talos-data

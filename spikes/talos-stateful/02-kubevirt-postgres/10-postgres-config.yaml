@@ -1,0 +1,29 @@
+# Arm B — Postgres config for the KubeVirt VM.
+#
+# These values are the EXACT SAME knobs as Arm A's Cluster.spec.postgresql.parameters
+# (see ../01-cloudnativepg/10-cluster.yaml). If you change one, change it in BOTH
+# arms — otherwise you are benchmarking the config difference, not the runtime model.
+#
+# cloud-init (in 20-virtualmachine.yaml) appends this file to postgresql.conf,
+# installs the SAME Postgres major+minor as Arm A (17.x), and creates the bench
+# role + database so pgbench connects identically to both arms.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pg-vm-conf
+  namespace: pgbench-vm
+data:
+  postgresql.conf.append: |
+    # ---- HELD CONSTANT: must match ../01-cloudnativepg/10-cluster.yaml ----
+    listen_addresses = '*'
+    max_connections = 100
+    shared_buffers = 256MB
+    effective_cache_size = 768MB
+    wal_level = replica
+    fsync = on
+    synchronous_commit = on
+    max_wal_size = 1GB
+    checkpoint_completion_target = 0.9
+  pg_hba.append: |
+    # spike only — allow the bench role from the cluster network with a password.
+    host  bench  bench  0.0.0.0/0  scram-sha-256
