@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mochallama
+  namespace: exp-mochallama-minio
+  labels:
+    app.kubernetes.io/name: mochallama
+    app.kubernetes.io/component: inference
+    experiment: exp-mochallama-minio
+spec:
+  # ClusterIP: the sovereign local-LLM endpoint, reachable in-cluster at
+  # http://mochallama.exp-mochallama-minio.svc.cluster.local:8080/v1/chat/completions
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: mochallama
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

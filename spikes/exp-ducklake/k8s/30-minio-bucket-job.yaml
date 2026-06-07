@@ -1,0 +1,44 @@
+# One-time MinIO bucket bootstrap: wait for MinIO, register an mc alias with the
+# root credentials, and create the `ducklake` bucket the lakehouse writes into.
+#
+# Unlike Garage (which needs a layout + a freshly minted access key), MinIO serves
+# S3 immediately and its ROOT user already IS a valid S3 access key id / secret. So
+# there is no key to extract and paste — the demo Job reuses the same root creds
+# directly from the minio-creds Secret. That makes this whole spike one-command and
+# fully declarative (the bucket create below is idempotent via `mc mb --ignore-existing`).
+#
+# In a real deployment you would mint a SCOPED access key limited to just this
+# bucket (least privilege) rather than handing the lakehouse the root credentials.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: minio-bucket
+  namespace: exp-ducklake
+spec:
+  backoffLimit: 5
+  template:
+    metadata:
+      labels:
+        app: minio-bucket
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: mc
+          image: minio/mc:RELEASE.2025-04-16T18-13-26Z
+          envFrom:
+            - secretRef:
+                name: minio-creds
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              echo "waiting for minio S3 API to be ready..."
+              until mc alias set lake http://minio:9000 \
+                    "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null 2>&1; do
+                sleep 2
+              done
+              echo "creating bucket 'ducklake' (idempotent)..."
+              mc mb --ignore-existing lake/ducklake
+              echo "buckets now present:"
+              mc ls lake
+              echo "==== minio bucket bootstrap done ===="

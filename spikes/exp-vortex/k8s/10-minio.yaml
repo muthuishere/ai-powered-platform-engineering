@@ -1,0 +1,99 @@
+# MinIO — S3-compatible object store. This spike's *backend*: both the Vortex and
+# the Parquet artifacts are written here, and the on-disk size we report is the byte
+# count MinIO holds for each object. Single-node, single PVC — fine for a benchmark,
+# not for anything durable.
+#
+# CAVEAT (see EXPERIMENTS-SPEC + README): MinIO Community Edition went maintenance-mode
+# and the repo was archived (~Feb 2026). We pin a known-good pre-archive CE image for
+# reproducibility; Garage is the live FOSS alternative and is API-compatible, so this
+# manifest is swappable. The spec asks for MinIO specifically, so MinIO it is.
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: minio-creds
+  namespace: exp-vortex
+type: Opaque
+stringData:
+  # DEMO credentials — regenerate for anything real.
+  AWS_ACCESS_KEY_ID: "vortexadmin"
+  AWS_SECRET_ACCESS_KEY: "vortexadmin123"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio
+  namespace: exp-vortex
+  labels:
+    app: minio
+spec:
+  selector:
+    app: minio
+  ports:
+    - name: s3
+      port: 9000
+      targetPort: 9000
+    - name: console
+      port: 9001
+      targetPort: 9001
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: minio
+  namespace: exp-vortex
+spec:
+  serviceName: minio
+  replicas: 1
+  selector:
+    matchLabels:
+      app: minio
+  template:
+    metadata:
+      labels:
+        app: minio
+    spec:
+      containers:
+        - name: minio
+          # Pin a real pre-archive CE tag for reproducibility.
+          image: quay.io/minio/minio:RELEASE.2025-04-08T15-41-24Z
+          args: ["server", "/data", "--console-address", ":9001"]
+          env:
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: minio-creds
+                  key: AWS_ACCESS_KEY_ID
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: minio-creds
+                  key: AWS_SECRET_ACCESS_KEY
+          ports:
+            - containerPort: 9000
+              name: s3
+            - containerPort: 9001
+              name: console
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            httpGet:
+              path: /minio/health/ready
+              port: 9000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /minio/health/live
+              port: 9000
+            initialDelaySeconds: 10
+            periodSeconds: 15
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 4Gi

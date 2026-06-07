@@ -1,0 +1,26 @@
+# CloudNativePG operator — POINTER, not a vendored copy.
+#
+# The operator ships as one large per-version upstream manifest. Vendoring a copy
+# rots; instead `run.sh` applies the PINNED upstream release directly:
+#
+#   kubectl apply --server-side -f \
+#     https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/v1.29.1/releases/cnpg-1.29.1.yaml
+#
+# Pinned version: v1.29.1  (CloudNativePG 1.29 line; supports PostgreSQL 13–18).
+# The release manifest installs into namespace `cnpg-system` and creates the
+# Deployment `cnpg-controller-manager` plus all CRDs (Cluster, Pooler, Backup, …).
+#
+# Bump procedure: change the tag in BOTH the URL above and run.sh (CNPG_VERSION),
+# then re-apply. Keep it pinned so the baseline is reproducible vs the KubeVirt arm.
+# Release list: https://github.com/cloudnative-pg/cloudnative-pg/releases
+#
+# We can't `apply -f` a remote URL from inside a static YAML, so this stub just
+# documents the pin and makes `apply -f k8s/` self-describing. run.sh does the
+# real remote apply (server-side, because the CRDs exceed the annotation limit).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cnpg-system
+  labels:
+    app.kubernetes.io/name: cloudnative-pg
+    experiment: exp-pg-statefulset

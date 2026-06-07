@@ -1,0 +1,130 @@
+# Arm B — a KubeVirt VirtualMachine running the SAME Postgres version + config
+# as Arm A. This is the headline experiment's VM arm and it runs for real on a
+# cluster with nested /dev/kvm (KubeVirt's virt-handler validates KVM).
+#
+# Requires (installed by k8s/install-kubevirt.sh): KubeVirt operator + CR
+# (Available), CDI (for the boot DataVolume). For node-failure HA the disk PVC
+# wants RWX; with RWO the VM is pinned to one node — run.sh records which.
+#
+# Sizing + Postgres config are pinned to MATCH Arm A:
+#   1 vCPU, 1Gi RAM, Postgres 17.x, same postgresql.conf knobs, same storageClass.
+#
+# Tokens injected by run.sh via envsubst:
+#   ${STORAGE_CLASS} — MUST equal Arm A's storageClass
+#   ${DISK_ACCESS_MODE} — ReadWriteMany (HA) or ReadWriteOnce (pinned, no live-migrate)
+---
+# Boot disk: import an Ubuntu cloud image into a PVC via CDI.
+apiVersion: cdi.kubevirt.io/v1beta1
+kind: DataVolume
+metadata:
+  name: pg-vm-boot
+  namespace: exp-pg-kubevirt
+spec:
+  source:
+    http:
+      url: https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64.img
+  pvc:
+    accessModes:
+      # ${DISK_ACCESS_MODE}: ReadWriteMany enables live-migration / node-failure
+      # reschedule (HA). ReadWriteOnce pins the VM to one node — run.sh notes it
+      # in results.json because it changes what the failover number means.
+      - ${DISK_ACCESS_MODE}
+    resources:
+      requests:
+        storage: 6Gi
+    storageClassName: "${STORAGE_CLASS}"   # MUST match ../arm-a-statefulset
+---
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: pg-vm
+  namespace: exp-pg-kubevirt
+spec:
+  running: true
+  template:
+    metadata:
+      labels:
+        kubevirt.io/vm: pg-vm
+        app: pg-vm
+    spec:
+      # Let KubeVirt live-migrate this VM (needs RWX storage above).
+      evictionStrategy: LiveMigrate
+      domain:
+        cpu:
+          cores: 1            # HELD CONSTANT: == Arm A resources.cpu
+        resources:
+          requests:
+            memory: 1Gi       # HELD CONSTANT: == Arm A resources.memory
+          limits:
+            memory: 1Gi
+        devices:
+          disks:
+            - name: bootdisk
+              disk: {bus: virtio}
+            - name: cloudinit
+              disk: {bus: virtio}
+          interfaces:
+            - name: default
+              masquerade: {}
+      networks:
+        - name: default
+          pod: {}
+      volumes:
+        - name: bootdisk
+          dataVolume:
+            name: pg-vm-boot
+        - name: cloudinit
+          cloudInitNoCloud:
+            # Installs the SAME Postgres major+minor as Arm A (17.x from PGDG),
+            # appends the identical postgresql.conf knobs, and creates the bench
+            # role + db so pgbench connects to both arms the same way.
+            userData: |-
+              #cloud-config
+              package_update: true
+              packages:
+                - curl
+                - ca-certificates
+                - gnupg
+                - lsb-release
+              runcmd:
+                # --- install Postgres 17 from PGDG (matches Arm A's 17.x) ---
+                - install -d /usr/share/postgresql-common/pgdg
+                - curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
+                - sh -c 'echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+                - apt-get update
+                - DEBIAN_FRONTEND=noninteractive apt-get install -y postgresql-17
+                # --- apply the HELD-CONSTANT config (same as Arm A) ---
+                - sh -c 'cat >> /etc/postgresql/17/main/postgresql.conf <<EOF
+                  listen_addresses = '"'"'*'"'"'
+                  max_connections = 100
+                  shared_buffers = 256MB
+                  effective_cache_size = 768MB
+                  wal_level = replica
+                  fsync = on
+                  synchronous_commit = on
+                  max_wal_size = 1GB
+                  checkpoint_completion_target = 0.9
+                  EOF'
+                - sh -c 'echo "host bench bench 0.0.0.0/0 scram-sha-256" >> /etc/postgresql/17/main/pg_hba.conf'
+                # --- create bench role + db (matches Arm A bootstrap) ---
+                - systemctl restart postgresql
+                - sudo -u postgres psql -c "CREATE ROLE bench LOGIN PASSWORD '"'"'bench-spike-123'"'"';"
+                - sudo -u postgres createdb -O bench bench
+---
+# Reach Postgres on the VM. NodePort so pgbench from the cluster/laptop can
+# connect without an extra ingress. Service selects the VMI launcher pod via the
+# kubevirt.io/vm label.
+apiVersion: v1
+kind: Service
+metadata:
+  name: pg-vm
+  namespace: exp-pg-kubevirt
+spec:
+  type: NodePort
+  selector:
+    kubevirt.io/vm: pg-vm
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+      nodePort: 30543

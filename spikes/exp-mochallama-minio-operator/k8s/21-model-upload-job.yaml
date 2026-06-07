@@ -1,0 +1,91 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: model-upload
+  namespace: exp-mochallama-minio
+  labels:
+    experiment: exp-mochallama-minio
+    app.kubernetes.io/component: model-upload
+spec:
+  backoffLimit: 4
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: model-upload
+    spec:
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: upload
+          # mc image ships curl + mc — fetch the GGUF, then PUT it into S3.
+          image: quay.io/minio/mc:RELEASE.2025-04-03T17-07-56Z
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -euo pipefail
+              export MC_CONFIG_DIR=/tmp/.mc
+              DEST="s3/${MODEL_BUCKET}/${MODEL_FILENAME}"
+
+              echo "[upload] connecting to ${S3_ENDPOINT}"
+              until mc alias set s3 "${S3_ENDPOINT}" "${AWS_ACCESS_KEY_ID}" "${AWS_SECRET_ACCESS_KEY}" >/dev/null 2>&1; do
+                sleep 2
+              done
+
+              # Idempotent: if the object is already in the bucket, skip the pull.
+              if mc stat "${DEST}" >/dev/null 2>&1; then
+                echo "[upload] ${DEST} already present — skipping download"
+                mc ls "s3/${MODEL_BUCKET}/"
+                exit 0
+              fi
+
+              echo "[upload] downloading model from ${MODEL_URL}"
+              curl -fL --retry 5 --retry-delay 3 -o "/tmp/${MODEL_FILENAME}" "${MODEL_URL}"
+              test -s "/tmp/${MODEL_FILENAME}"
+              echo "[upload] putting object -> ${DEST}"
+              mc cp "/tmp/${MODEL_FILENAME}" "${DEST}"
+              mc ls "s3/${MODEL_BUCKET}/"
+              echo "[upload] done"
+          env:
+            - name: S3_ENDPOINT
+              valueFrom:
+                configMapKeyRef: { name: model-config, key: S3_ENDPOINT }
+            - name: MODEL_BUCKET
+              valueFrom:
+                configMapKeyRef: { name: model-config, key: MODEL_BUCKET }
+            - name: MODEL_FILENAME
+              valueFrom:
+                configMapKeyRef: { name: model-config, key: MODEL_FILENAME }
+            - name: MODEL_URL
+              valueFrom:
+                configMapKeyRef: { name: model-config, key: MODEL_URL }
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef: { name: minio-creds, key: AWS_ACCESS_KEY_ID }
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef: { name: minio-creds, key: AWS_SECRET_ACCESS_KEY }
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+      volumes:
+        # Big enough to stage the GGUF on the way into the bucket.
+        - name: tmp
+          emptyDir:
+            sizeLimit: 4Gi

@@ -1,0 +1,31 @@
+# Metrics — CloudNativePG exposes Prometheus metrics on each instance pod at
+# :9187/metrics (the operator runs a built-in postgres-exporter sidecar logic).
+#
+# Two ways to scrape, depending on whether the Prometheus Operator CRDs exist:
+#
+# 1. PREFERRED (Prometheus Operator installed): flip `spec.monitoring.
+#    enablePodMonitor: true` on the Cluster and CNPG creates the PodMonitor for
+#    you — no separate object needed. We instead ship this standalone PodMonitor
+#    so the manifest is explicit and self-documenting; it selects the same pods.
+#
+# 2. NO Prometheus Operator (plain Prometheus): add a scrape_config that targets
+#    pods with label cnpg.io/cluster=pg on port 9187. See run.sh / RESULTS.md.
+#
+# This PodMonitor is applied with `kubectl apply -f k8s/ --validate=false` only if
+# the monitoring.coreos.com/v1 PodMonitor CRD is present; run.sh guards on that so
+# a cluster without the Prometheus Operator does not fail the deploy.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: pg
+  namespace: exp-pg-ss
+  labels:
+    app.kubernetes.io/part-of: pg-statefulset-spike
+    experiment: exp-pg-statefulset
+spec:
+  selector:
+    matchLabels:
+      cnpg.io/cluster: pg
+  podMetricsEndpoints:
+    - port: metrics          # CNPG names the 9187 port "metrics" on the pod
+      interval: 15s

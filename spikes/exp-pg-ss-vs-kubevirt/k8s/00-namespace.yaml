@@ -1,0 +1,13 @@
+# Shared namespace for BOTH arms of the headline experiment.
+#
+# Arm A (CloudNativePG StatefulSet) and Arm B (KubeVirt VM) both live in
+# exp-pg-kubevirt so the comparison is apples-to-apples: same namespace, same
+# cluster, same node pool. The CNPG operator itself installs into cnpg-system
+# (see install side); KubeVirt installs into the kubevirt namespace.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: exp-pg-kubevirt
+  labels:
+    app.kubernetes.io/part-of: exp-pg-ss-vs-kubevirt
+    pod-security.kubernetes.io/enforce: privileged   # KubeVirt virt-launcher needs it

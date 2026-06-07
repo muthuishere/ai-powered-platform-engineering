@@ -1,0 +1,81 @@
+{
+  "generated_at": "2026-06-07T09:39:20Z",
+  "spike_count": 8,
+  "ran": [],
+  "not_run": [
+    "exp-arrow-flight",
+    "exp-duckdb-iceberg",
+    "exp-duckdb-parquet",
+    "exp-ducklake",
+    "exp-mochallama-minio-operator",
+    "exp-pg-ss-vs-kubevirt",
+    "exp-pg-statefulset",
+    "exp-vortex"
+  ],
+  "spikes": {
+    "exp-duckdb-parquet": {
+      "status": "not-run",
+      "reason": "results.json absent (spike not yet run)",
+      "ran_at": null,
+      "cluster": null,
+      "notes": null,
+      "metrics": {}
+    },
+    "exp-duckdb-iceberg": {
+      "status": "not-run",
+      "reason": "results.json absent (spike not yet run)",
+      "ran_at": null,
+      "cluster": null,
+      "notes": null,
+      "metrics": {}
+    },
+    "exp-ducklake": {
+      "status": "not-run",
+      "reason": "results.json absent (spike not yet run)",
+      "ran_at": null,
+      "cluster": null,
+      "notes": null,
+      "metrics": {}
+    },
+    "exp-vortex": {
+      "status": "not-run",
+      "reason": "results.json absent (spike not yet run)",
+      "ran_at": null,
+      "cluster": null,
+      "notes": null,
+      "metrics": {}
+    },
+    "exp-arrow-flight": {
+      "status": "not-run",
+      "reason": "results.json absent (spike not yet run)",
+      "ran_at": null,
+      "cluster": null,
+      "notes": null,
+      "metrics": {}
+    },
+    "exp-pg-statefulset": {
+      "status": "not-run",
+      "reason": "results.json absent (spike not yet run)",
+      "ran_at": null,
+      "cluster": null,
+      "notes": null,
+      "metrics": {}
+    },
+    "exp-pg-ss-vs-kubevirt": {
+      "status": "not-run",
+      "reason": "results.json absent (spike not yet run)",
+      "ran_at": null,
+      "cluster": null,
+      "notes": null,
+      "metrics": {}
+    },
+    "exp-mochallama-minio-operator": {
+      "status": "not-run",
+      "reason": "results.json absent (spike not yet run)",
+      "ran_at": null,
+      "cluster": null,
+      "notes": null,
+      "metrics": {}
+    }
+  }
+}

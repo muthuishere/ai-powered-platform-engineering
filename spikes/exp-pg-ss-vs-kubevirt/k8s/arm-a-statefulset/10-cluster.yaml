@@ -1,0 +1,76 @@
+# Arm A — CloudNativePG StatefulSet Postgres (3 instances: 1 primary + 2 replicas).
+#
+# This is the SAME config as spikes/talos-stateful/01-cloudnativepg/10-cluster.yaml,
+# moved into the exp-pg-kubevirt namespace so it sits beside Arm B.
+#
+# Everything that MUST be identical to Arm B (KubeVirt VM) is pinned here:
+#   Postgres version, storageClass, CPU, RAM, and the postgresql.conf knobs.
+# Change one of these → change it in BOTH arms, or you measure that difference
+# instead of the container-vs-VM runtime model.
+#
+# Operator install: run.sh applies the pinned CloudNativePG release first
+# (CNPG v1.24.1, the 1.24 LTS line; Postgres 13-17), then this Cluster.
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: pg-ss
+  namespace: exp-pg-kubevirt
+spec:
+  instances: 3                       # 1 primary + 2 streaming replicas
+
+  # --- HELD CONSTANT: Postgres version -----------------------------------------
+  # Same major+minor as the VM arm's PGDG install. Pin it; don't float.
+  imageName: ghcr.io/cloudnative-pg/postgresql:17.2
+
+  # --- HELD CONSTANT: CPU + RAM ------------------------------------------------
+  # The VM arm gets the SAME 1 vCPU / 1Gi. requests == limits so the VM
+  # (fixed sizing) is a fair match.
+  resources:
+    requests: {cpu: "1", memory: 1Gi}
+    limits:   {cpu: "1", memory: 1Gi}
+
+  # --- HELD CONSTANT: Postgres config ------------------------------------------
+  # Mirror these EXACT values in the VM's postgresql.conf (arm-b-kubevirt).
+  postgresql:
+    parameters:
+      max_connections: "100"
+      shared_buffers: "256MB"
+      effective_cache_size: "768MB"
+      wal_level: "replica"
+      fsync: "on"
+      synchronous_commit: "on"       # durable commits; same in both arms
+      max_wal_size: "1GB"
+      checkpoint_completion_target: "0.9"
+
+  # --- HELD CONSTANT: storage --------------------------------------------------
+  # storageClassName MUST equal the class Arm B's PVC uses. run.sh injects
+  # ${STORAGE_CLASS} via envsubst (default: the value passed with --storage-class,
+  # else the cluster default if left blank). Whatever you choose, it is recorded
+  # in results.json so the comparison is honest.
+  storage:
+    size: 5Gi
+    storageClassName: "${STORAGE_CLASS}"
+
+  # Application-level failover: CNPG promotes a replica and re-points pg-ss-rw.
+  # This is what bench/failover (run.sh --failover) times for Arm A.
+  primaryUpdateStrategy: unsupervised
+
+  bootstrap:
+    initdb:
+      database: bench
+      owner: bench
+      secret:
+        name: pg-bench-cred
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: pg-bench-cred
+  namespace: exp-pg-kubevirt
+type: kubernetes.io/basic-auth
+stringData:
+  # spike only — not a real secret. Both arms use these so pgbench connects
+  # identically. The VM arm creates the SAME role/password via cloud-init.
+  username: bench
+  password: bench-spike-123

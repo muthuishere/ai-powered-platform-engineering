@@ -1,0 +1,95 @@
+# MinIO — S3-compatible object store. The DATA plane of the lakehouse: DuckLake
+# writes Parquet here. Single-node for the spike; in real life run distributed
+# (>= 4 drives across nodes) for erasure-coded durability.
+#
+# NOTE: MinIO community edition went maintenance-mode and the GitHub repo was
+# archived (~Feb 2026). It is still ubiquitous and its S3 API is everywhere, so we
+# pin a known-good pre-archive release tag for reproducibility. Garage is the live
+# open-source alternative (see the talos-data spike). The lakehouse layer doesn't
+# care which one serves S3 — that is the point of an S3-compatible interface.
+#
+# Ports: 9000 S3 API · 9001 web console.
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: minio-creds
+  namespace: exp-ducklake
+type: Opaque
+stringData:
+  # DEMO root credentials — regenerate for anything real. MinIO uses the root user
+  # as both the S3 access key id and secret. The DuckLake demo reuses these directly
+  # (a real deployment would mint a scoped, bucket-limited access key instead).
+  MINIO_ROOT_USER: "minioadmin"
+  MINIO_ROOT_PASSWORD: "minioadmin123"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio
+  namespace: exp-ducklake
+  labels:
+    app: minio
+spec:
+  selector:
+    app: minio
+  ports:
+    - name: s3-api
+      port: 9000
+      targetPort: 9000
+    - name: console
+      port: 9001
+      targetPort: 9001
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: minio
+  namespace: exp-ducklake
+spec:
+  serviceName: minio
+  replicas: 1
+  selector:
+    matchLabels:
+      app: minio
+  template:
+    metadata:
+      labels:
+        app: minio
+    spec:
+      containers:
+        - name: minio
+          # Pin a real pre-archive RELEASE tag for reproducibility.
+          image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+          args: ["server", "/data", "--console-address", ":9001"]
+          envFrom:
+            - secretRef:
+                name: minio-creds
+          ports:
+            - containerPort: 9000
+              name: s3-api
+            - containerPort: 9001
+              name: console
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            httpGet:
+              path: /minio/health/ready
+              port: 9000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /minio/health/live
+              port: 9000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 5Gi
