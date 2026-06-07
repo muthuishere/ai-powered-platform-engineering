@@ -84,7 +84,7 @@ Implementation notes:
 | `spikes/talos-gitops/gitops/bootstrap/root-app.yaml` | App-of-Apps root |
 | `spikes/talos-gitops/gitops/apps/*.yaml` | ApplicationSets (the platform components) |
 | `.claude/skills/platform-sre/scripts/remediate.py` | detect → PR → (merge) → ArgoCD |
-| `.claude/skills/platform-sre/references/steps/step-06-remediate.md` | remediation runbook + safety model |
+| `.claude/skills/platform-sre/references/step-06-remediate.md` | remediation runbook + safety model |
 
 ## Verify
 

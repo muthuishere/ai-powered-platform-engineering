@@ -54,7 +54,7 @@ Mirror the shipped `reqsume-sre` / `huddle` skill shape (see `~/.claude/CLAUDE.m
 │   ├── workflow.md               # Variables, Core Rules, numbered Process
 │   ├── activation-routing.xml    # <defaults> + <routes>(<when>/<goal>/<steps>)
 │   ├── talos-cheatsheet.md
-│   └── steps/step-00-preflight.md … step-06-remediate.md
+│   └── step-00-preflight.md … step-06-remediate.md
 └── scripts/
     ├── prerequisites.py          # enforce(): binaries + cluster guard (resolve/default dev)
     ├── kube.py                   # read-only kubectl/talosctl wrappers + Findings
@@ -71,8 +71,8 @@ Build order within the chapter:
    becomes the script's exit code (so capabilities double as CI gates).
 3. **`SKILL.md` + `references/`** — thin SKILL.md (triggers + Core Rules), the
    `workflow.md` process, the `activation-routing.xml` dispatcher, and one
-   `steps/step-NN-*.md` per route.
-4. **`steps/step-00-preflight.md`** — the runbook the agent reads first: pick a
+   `step-NN-*.md` per route.
+4. **`step-00-preflight.md`** — the runbook the agent reads first: pick a
    cluster, run `prerequisites.py`, fail-fast.
 
 ## What is what (artifact map)
@@ -84,7 +84,7 @@ Build order within the chapter:
 | `SKILL.md` | activation triggers + the four Core Rules |
 | `references/workflow.md` | variables + process (read steps in order) |
 | `references/activation-routing.xml` | route table: `<when>` triggers → step file |
-| `references/steps/step-00-preflight.md` | the safe entry runbook |
+| `references/step-00-preflight.md` | the safe entry runbook |
 
 ## Verify the guardrails actually bite
 

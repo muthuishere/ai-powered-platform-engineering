@@ -71,8 +71,8 @@ Implementation notes the chapter should teach:
 | `.claude/skills/platform-sre/scripts/health.py` | substrate health sweep |
 | `.claude/skills/platform-sre/scripts/reliability.py` | workload reliability review |
 | `.claude/skills/platform-sre/scripts/kube.py` | read-only wrappers + `Findings` (shared) |
-| `.claude/skills/platform-sre/references/steps/step-01-health.md` | health runbook |
-| `.claude/skills/platform-sre/references/steps/step-02-reliability.md` | reliability runbook |
+| `.claude/skills/platform-sre/references/step-01-health.md` | health runbook |
+| `.claude/skills/platform-sre/references/step-02-reliability.md` | reliability runbook |
 | `spikes/talos-gitops/lab/fault-workloads.yaml` | intentional drift to detect |
 
 ## Verify (observed on the live lab)

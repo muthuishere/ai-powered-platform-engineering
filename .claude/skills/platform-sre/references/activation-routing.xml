@@ -13,55 +13,55 @@
     <route id="health">
       <when>health, is the cluster healthy, nodes ready, etcd, control plane, control-plane down, apiserver, is ops healthy, check the cluster, what's wrong with dev, cluster status</when>
       <goal>Read-only health sweep: nodes Ready, etcd quorum, control-plane pods, Talos services.</goal>
-      <steps><step ref="references/steps/step-01-health.md">Run scripts/health.py --cluster {cluster}.</step></steps>
+      <steps><step ref="references/step-01-health.md">Run scripts/health.py --cluster {cluster}.</step></steps>
     </route>
 
     <route id="reliability">
       <when>reliability, probes, liveness, readiness, replicas, single replica, HA, PodDisruptionBudget, PDB, resource limits, will this survive a drain, SLO risk</when>
       <goal>Find reliability gaps in user workloads: missing probes, single-replica/no-PDB, no limits.</goal>
-      <steps><step ref="references/steps/step-02-reliability.md">Run scripts/reliability.py --cluster {cluster}.</step></steps>
+      <steps><step ref="references/step-02-reliability.md">Run scripts/reliability.py --cluster {cluster}.</step></steps>
     </route>
 
     <route id="security">
       <when>security, security review, drift, privileged, runAsRoot, run as root, hostPath, hostNetwork, NetworkPolicy, netpol, pod security, is this hardened</when>
       <goal>Scan for security drift: privileged containers, root, host namespaces/paths, missing NetworkPolicies.</goal>
-      <steps><step ref="references/steps/step-03-security.md">Run scripts/security_drift.py --cluster {cluster}.</step></steps>
+      <steps><step ref="references/step-03-security.md">Run scripts/security_drift.py --cluster {cluster}.</step></steps>
     </route>
 
     <route id="certs">
       <when>cert, certificate, expiry, expiring, pki, rotate, when will the api break, outage prediction, talos cert, kubeconfig cert</when>
       <goal>Compute cert days-to-expiry and predict the API outage window.</goal>
-      <steps><step ref="references/steps/step-04-certs.md">Run scripts/certs.py --cluster {cluster} [--threshold-days N].</step></steps>
+      <steps><step ref="references/step-04-certs.md">Run scripts/certs.py --cluster {cluster} [--threshold-days N].</step></steps>
     </route>
 
     <route id="vuln">
       <when>vulnerability, vuln, cve, cves, image scan, scan images, known vulnerable, patch status, are we behind on talos, talos version, kubernetes version, version currency, supply chain, latest tag, trivy, grype, patch management</when>
       <goal>Read-only vulnerability review: Talos/Kubernetes version currency, image supply-chain hygiene (mutable :latest, untrusted registries), and (if trivy/grype present) image CVE scan.</goal>
-      <steps><step ref="references/steps/step-07-vuln.md">Run scripts/vuln.py --cluster {cluster} [--all-namespaces] [--require-digests].</step></steps>
+      <steps><step ref="references/step-07-vuln.md">Run scripts/vuln.py --cluster {cluster} [--all-namespaces] [--require-digests].</step></steps>
     </route>
 
     <route id="upgrade">
       <when>upgrade, can we upgrade, upgrade readiness, version skew, deprecated api, removed api, preflight, talos upgrade, kubernetes upgrade, dry-run, rollback, fearless upgrade</when>
       <goal>Read-only upgrade readiness: current versions, node version skew, deprecated/removed-API preflight (pluto/kubent if present), and the privileged A/B upgrade plan (never executed).</goal>
-      <steps><step ref="references/steps/step-08-upgrade.md">Run scripts/upgrade.py --cluster {cluster} [--target-k8s vX].</step></steps>
+      <steps><step ref="references/step-08-upgrade.md">Run scripts/upgrade.py --cluster {cluster} [--target-k8s vX].</step></steps>
     </route>
 
     <route id="worthiness">
       <when>do we need kubernetes, is this k8s worthy, should this be on kubernetes, overkill, fargate, cloud run, too small for k8s, k8s overhead, right-size the platform</when>
       <goal>Advisory: count service/workload/autoscaling/scale signals and judge whether the cluster justifies Kubernetes overhead vs ECS Fargate / Cloud Run.</goal>
-      <steps><step ref="references/steps/step-09-worthiness.md">Run scripts/worthiness.py --cluster {cluster} [--threshold N].</step></steps>
+      <steps><step ref="references/step-09-worthiness.md">Run scripts/worthiness.py --cluster {cluster} [--threshold N].</step></steps>
     </route>
 
     <route id="report">
       <when>report, maturity report, scorecard, score the platform, grade, how mature is this cluster, executive summary, overall health score</when>
       <goal>Run all read-only capabilities and print a scored platform maturity report.</goal>
-      <steps><step ref="references/steps/step-05-report.md">Run scripts/report.py --cluster {cluster}.</step></steps>
+      <steps><step ref="references/step-05-report.md">Run scripts/report.py --cluster {cluster}.</step></steps>
     </route>
 
     <route id="remediate">
       <when>remediate, fix it, open a PR, raise a PR, auto-fix, apply the fix, add a PDB, generate the fix, gitops fix, make it self-heal</when>
       <goal>Generate a fix manifest and open a PR to the Gitea platform repo; ArgoCD syncs on merge. Dry-run unless --apply.</goal>
-      <steps><step ref="references/steps/step-06-remediate.md">Run scripts/remediate.py --cluster {cluster} --fix {fix} --namespace {ns} --workload {name} [--apply].</step></steps>
+      <steps><step ref="references/step-06-remediate.md">Run scripts/remediate.py --cluster {cluster} --fix {fix} --namespace {ns} --workload {name} [--apply].</step></steps>
     </route>
 
   </routes>

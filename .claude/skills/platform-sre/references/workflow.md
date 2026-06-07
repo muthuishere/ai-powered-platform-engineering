@@ -28,7 +28,7 @@ numbered lab under `spikes/talos-gitops/` and a set of Python capability scripts
 
 ## Process
 
-1. Read `references/steps/step-00-preflight.md` — binaries, cluster guard, list
+1. Read `references/step-00-preflight.md` — binaries, cluster guard, list
    clusters, pick `{cluster}` (default dev).
 2. Read `references/activation-routing.xml` — choose the route + goal.
 3. Run the matched step:

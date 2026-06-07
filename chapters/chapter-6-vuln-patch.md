@@ -111,7 +111,7 @@ Implementation notes:
 |---|---|
 | `.claude/skills/platform-sre/scripts/vuln.py` | version currency + supply-chain hygiene + (optional) CVE scan |
 | `.claude/skills/platform-sre/scripts/report.py` | maturity report, now with the **Vulnerability** dimension |
-| `.claude/skills/platform-sre/references/steps/step-07-vuln.md` | vulnerability runbook |
+| `.claude/skills/platform-sre/references/step-07-vuln.md` | vulnerability runbook |
 | `spikes/talos-gitops/lab/fault-workloads.yaml` | carries the deliberately-old image |
 
 ## Verify (observed / expected on the live lab)

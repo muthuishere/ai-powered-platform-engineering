@@ -77,9 +77,9 @@ Implementation notes:
 | `.claude/skills/platform-sre/scripts/security_drift.py` | security posture scan |
 | `.claude/skills/platform-sre/scripts/certs.py` | cert expiry → outage prediction |
 | `.claude/skills/platform-sre/scripts/report.py` | **capstone**: scored maturity report |
-| `.claude/skills/platform-sre/references/steps/step-03-security.md` | security runbook |
-| `.claude/skills/platform-sre/references/steps/step-04-certs.md` | certs runbook |
-| `.claude/skills/platform-sre/references/steps/step-05-report.md` | report runbook |
+| `.claude/skills/platform-sre/references/step-03-security.md` | security runbook |
+| `.claude/skills/platform-sre/references/step-04-certs.md` | certs runbook |
+| `.claude/skills/platform-sre/references/step-05-report.md` | report runbook |
 
 ## Verify (observed / expected on the live lab)
 
