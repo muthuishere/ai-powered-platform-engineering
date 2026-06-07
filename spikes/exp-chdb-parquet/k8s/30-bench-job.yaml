@@ -1,0 +1,197 @@
+# The benchmark, in-cluster. chDB (in-process ClickHouse) is a stateless query
+# runner: this Job spins up a python:3.12-slim pod, pip-installs `chdb`, writes a
+# synthetic Parquet file to MinIO, scans it, times group-by aggregations, reports
+# the on-disk size, and exits. All durable state stays on MinIO as plain Parquet.
+#
+# Unlike DuckDB's distroless image (no shell), python:slim HAS a shell, so the
+# whole thing is one container: install deps, then exec bench.py. bench.py is a
+# COPY of demo/bench.py kept inline so k8s/ is self-contained. If you edit one,
+# sync the other (regenerate this CM with:
+#   kubectl -n exp-chdb-parquet create configmap chdb-bench-py \
+#     --from-file=bench.py=demo/bench.py --dry-run=client -o yaml ).
+#
+# chdb is pinned to a known-good 3.x wheel; pip pulls it (and its manylinux binary)
+# at pod start. If the cluster has no egress, pre-bake an image instead — see README.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: chdb-bench-py
+  namespace: exp-chdb-parquet
+data:
+  bench.py: |
+    #!/usr/bin/env python3
+    """chDB-over-Parquet benchmark (inline copy of demo/bench.py)."""
+    import json
+    import os
+    import sys
+    import time
+
+    import chdb
+
+    ENDPOINT = os.environ["S3_ENDPOINT"]
+    BUCKET = os.environ["S3_BUCKET"]
+    KEY_ID = os.environ["S3_KEY_ID"]
+    SECRET = os.environ["S3_SECRET"]
+    ROW_COUNT = int(os.environ.get("ROW_COUNT", "50000000"))
+
+    URL = "http://{ep}/{bucket}/data.parquet".format(ep=ENDPOINT, bucket=BUCKET)
+
+
+    def emit(key, value):
+        print("@@METRIC {k}={v}@@".format(k=key, v=value), flush=True)
+
+
+    def q(sql):
+        return chdb.query(sql, "JSONCompact")
+
+
+    GEN = """
+    SELECT
+        number AS id,
+        ['chennai','bengaluru','mumbai','delhi','pune'][(number % 5) + 1] AS city,
+        toFloat64((number * 2654435761) % 100000) / 100.0                 AS amount,
+        toDateTime('2026-06-01 00:00:00') + toIntervalSecond(number % 86400) AS ts
+    FROM numbers({rows})
+    """.format(rows=ROW_COUNT)
+
+
+    def main():
+        print("chDB version: {}".format(chdb.__version__), flush=True)
+        emit("chdb_version", chdb.__version__)
+        emit("row_count", ROW_COUNT)
+
+        s3_src = "s3('{url}', '{k}', '{s}', 'Parquet')".format(url=URL, k=KEY_ID, s=SECRET)
+        s3_dst = "s3('{url}', '{k}', '{s}', 'Parquet')".format(url=URL, k=KEY_ID, s=SECRET)
+
+        print("\n=== ingest: writing {} rows of Parquet to {} ===".format(ROW_COUNT, URL),
+              flush=True)
+        t0 = time.perf_counter()
+        q("""
+            INSERT INTO FUNCTION {dst}
+            SETTINGS
+                output_format_parquet_compression_method = 'zstd',
+                output_format_parquet_row_group_size = 1000000,
+                s3_truncate_on_insert = 1
+            {gen}
+        """.format(dst=s3_dst, gen=GEN))
+        ingest_s = time.perf_counter() - t0
+        emit("ingest_s", "{:.4f}".format(ingest_s))
+        print("ingest done in {:.4f}s".format(ingest_s), flush=True)
+
+        size_res = q("SELECT sum(_size) FROM {src}".format(
+            src="s3('{url}', '{k}', '{s}', 'One')".format(url=URL, k=KEY_ID, s=SECRET)))
+        try:
+            compressed_bytes = int(json.loads(str(size_res))["data"][0][0])
+        except Exception:
+            size_res = q("SELECT any(_size) FROM {src} LIMIT 1".format(src=s3_src))
+            compressed_bytes = int(json.loads(str(size_res))["data"][0][0])
+        emit("compressed_bytes", compressed_bytes)
+
+        meta = q("""
+            SELECT toUInt64(total_uncompressed_size) AS unc,
+                   toUInt64(total_compressed_size)   AS cmp
+            FROM s3('{url}', '{k}', '{s}', 'ParquetMetadata')
+        """.format(url=URL, k=KEY_ID, s=SECRET))
+        try:
+            mrow = json.loads(str(meta))["data"][0]
+            uncompressed_bytes = int(mrow[0])
+        except Exception:
+            uncompressed_bytes = None
+        if uncompressed_bytes:
+            emit("uncompressed_bytes", uncompressed_bytes)
+
+        print("\n=== scan: sum(id) full column scan over the Parquet file ===", flush=True)
+        t0 = time.perf_counter()
+        scan_res = q("SELECT sum(id) AS s, count(*) AS n FROM {src}".format(src=s3_src))
+        scan_s = time.perf_counter() - t0
+        rows_scanned = int(json.loads(str(scan_res))["data"][0][1])
+        emit("scan_s", "{:.4f}".format(scan_s))
+        emit("rows_scanned", rows_scanned)
+        print("scanned {} rows in {:.4f}s".format(rows_scanned, scan_s), flush=True)
+
+        query_sql = """
+            SELECT city, count(*) AS n, avg(amount) AS avg_amount, max(amount) AS max_amount
+            FROM {src}
+            GROUP BY city ORDER BY n DESC
+        """.format(src=s3_src)
+        print("\n=== query: 7x group-by for p50/p95 ===", flush=True)
+        for i in range(7):
+            t0 = time.perf_counter()
+            q(query_sql)
+            dt = time.perf_counter() - t0
+            emit("query_s", "{:.6f}".format(dt))
+            print("  query rep {} : {:.6f}s".format(i + 1, dt), flush=True)
+
+        emit("done", 1)
+        print("\nbench complete.", flush=True)
+
+
+    if __name__ == "__main__":
+        try:
+            main()
+        except Exception as exc:
+            print("BENCH ERROR: {}".format(exc), file=sys.stderr, flush=True)
+            raise
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: chdb-bench
+  namespace: exp-chdb-parquet
+spec:
+  backoffLimit: 2
+  template:
+    metadata:
+      labels:
+        app: chdb-bench
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: chdb
+          image: python:3.12-slim
+          envFrom:
+            - secretRef:
+                name: minio-creds
+          env:
+            - name: S3_ENDPOINT
+              value: "minio:9000"
+            - name: S3_BUCKET
+              value: "bench"
+            # MinIO root creds double as the S3 key for the lab.
+            - name: S3_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: minio-creds
+                  key: MINIO_ROOT_USER
+            - name: S3_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: minio-creds
+                  key: MINIO_ROOT_PASSWORD
+            - name: ROW_COUNT
+              value: "50000000"
+            - name: PIP_DISABLE_PIP_VERSION_CHECK
+              value: "1"
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              echo "installing chdb (pip)..."
+              pip install --no-cache-dir --quiet 'chdb==3.6.0'
+              echo "running bench.py"
+              exec python /bench/bench.py
+          volumeMounts:
+            - name: bench
+              mountPath: /bench
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+      volumes:
+        - name: bench
+          configMap:
+            name: chdb-bench-py

@@ -1,0 +1,103 @@
+# Variant A: app PROTECTED by a PodDisruptionBudget.
+#   The PDB (minAvailable: 3 of 4) caps how many pods the eviction API will let
+#   go at once. During a node drain (which evicts via the Eviction API), the
+#   drain is forced to wait until a replacement is Ready before evicting the
+#   next pod -- so the Service never drops below 3 ready endpoints.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app-with-pdb
+  namespace: exp-pdb-eviction
+  labels:
+    app: app-with-pdb
+    variant: with-pdb
+    app.kubernetes.io/part-of: exp-pdb-eviction
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: app-with-pdb
+  template:
+    metadata:
+      labels:
+        app: app-with-pdb
+        variant: with-pdb
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 5
+      containers:
+        - name: app
+          image: python:3.12-slim
+          command: ["python3", "/app/app.py"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: PORT
+              value: "8080"
+            - name: READY_DELAY_S
+              value: "6"
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 1
+            periodSeconds: 1
+            timeoutSeconds: 1
+            successThreshold: 1
+            failureThreshold: 1
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 64Mi
+          volumeMounts:
+            - name: app
+              mountPath: /app
+      volumes:
+        - name: app
+          configMap:
+            name: pdb-app
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: app-with-pdb
+  namespace: exp-pdb-eviction
+  labels:
+    app: app-with-pdb
+    app.kubernetes.io/part-of: exp-pdb-eviction
+spec:
+  selector:
+    app: app-with-pdb
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: app-with-pdb
+  namespace: exp-pdb-eviction
+  labels:
+    app.kubernetes.io/part-of: exp-pdb-eviction
+spec:
+  minAvailable: 3
+  selector:
+    matchLabels:
+      app: app-with-pdb

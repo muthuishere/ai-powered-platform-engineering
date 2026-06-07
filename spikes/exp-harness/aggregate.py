@@ -27,7 +27,8 @@ from datetime import datetime, timezone
 
 # Data-format spikes — share the same metrics shape and feed the format matrix.
 DATA_FORMAT_SPIKES = [
-    ("exp-duckdb-parquet", "Parquet"),
+    ("exp-duckdb-parquet", "Parquet (DuckDB)"),
+    ("exp-chdb-parquet", "Parquet (chDB)"),
     ("exp-duckdb-iceberg", "Iceberg"),
     ("exp-ducklake", "DuckLake"),
     ("exp-vortex", "Vortex"),

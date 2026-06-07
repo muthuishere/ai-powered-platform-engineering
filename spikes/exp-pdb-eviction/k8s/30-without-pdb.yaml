@@ -1,0 +1,90 @@
+# Variant B: the SAME app, with NO PodDisruptionBudget.
+#   Nothing caps concurrent evictions. A drain (or any controller using the
+#   Eviction API) can evict every pod at once. New pods take READY_DELAY_S to
+#   become Ready, so for a window the Service has ZERO ready endpoints and
+#   every client request fails -> the availability dip this spike measures.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app-without-pdb
+  namespace: exp-pdb-eviction
+  labels:
+    app: app-without-pdb
+    variant: without-pdb
+    app.kubernetes.io/part-of: exp-pdb-eviction
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: app-without-pdb
+  template:
+    metadata:
+      labels:
+        app: app-without-pdb
+        variant: without-pdb
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 5
+      containers:
+        - name: app
+          image: python:3.12-slim
+          command: ["python3", "/app/app.py"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: PORT
+              value: "8080"
+            - name: READY_DELAY_S
+              value: "6"
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 1
+            periodSeconds: 1
+            timeoutSeconds: 1
+            successThreshold: 1
+            failureThreshold: 1
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 64Mi
+          volumeMounts:
+            - name: app
+              mountPath: /app
+      volumes:
+        - name: app
+          configMap:
+            name: pdb-app
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: app-without-pdb
+  namespace: exp-pdb-eviction
+  labels:
+    app: app-without-pdb
+    app.kubernetes.io/part-of: exp-pdb-eviction
+spec:
+  selector:
+    app: app-without-pdb
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

@@ -1,0 +1,45 @@
+# Synthetic load generator: a single pod that fires many concurrent, continuous
+# GET /burn requests at the cpu-burner Service. Each request makes a replica do
+# real CPU work, so aggregate utilization climbs above the HPA's 50% target and
+# triggers scale-out. We start load by creating this pod and stop it by deleting
+# it (run.sh does both). CONCURRENCY background curl loops are spawned.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: load-generator
+  namespace: exp-hpa-scaling
+  labels:
+    app: load-generator
+spec:
+  restartPolicy: Never
+  containers:
+    - name: load
+      image: curlimages/curl:8.11.0
+      command: ["/bin/sh", "-c"]
+      args:
+        - |
+          TARGET="http://cpu-burner.exp-hpa-scaling.svc.cluster.local:8080/burn?ms=${BURN_MS}"
+          echo "load-generator: CONCURRENCY=${CONCURRENCY} BURN_MS=${BURN_MS} -> ${TARGET}"
+          i=0
+          while [ "$i" -lt "${CONCURRENCY}" ]; do
+            ( while true; do curl -s -m 5 "$TARGET" >/dev/null 2>&1 || true; done ) &
+            i=$((i+1))
+          done
+          wait
+      env:
+        # Tuned so the workload is driven well past the 50% CPU target (so the
+        # HPA scales out) WITHOUT saturating a single replica so hard that its
+        # readiness handler is starved (which would flip it NotReady and stall
+        # the HPA). 8 concurrent burners on a 150m-request pod => several hundred
+        # percent utilization, i.e. a desired replica count near the max of 6.
+        - name: CONCURRENCY
+          value: "8"
+        - name: BURN_MS
+          value: "100"
+      resources:
+        requests:
+          cpu: 50m
+          memory: 32Mi
+        limits:
+          cpu: 200m
+          memory: 64Mi

@@ -1,0 +1,36 @@
+installing chdb (pip)...
+WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager, possibly rendering your system unusable. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv. Use the --root-user-action option if you know what you are doing and want to suppress this warning.
+running bench.py
+chDB version: 3.6.0
+@@METRIC chdb_version=3.6.0@@
+@@METRIC row_count=50000000@@
+
+=== ingest: writing 50000000 rows of Parquet to http://minio:9000/bench/data.parquet ===
+@@METRIC ingest_s=28.7331@@
+ingest done in 28.7331s
+@@METRIC compressed_bytes=338044922@@
+@@METRIC uncompressed_bytes=703170229@@
+
+=== scan: sum(id) full column scan over the Parquet file ===
+@@METRIC scan_s=0.9447@@
+@@METRIC rows_scanned=50000000@@
+scanned 50000000 rows in 0.9447s
+
+=== query: 7x group-by for p50/p95 ===
+@@METRIC query_s=2.439410@@
+  query rep 1 : 2.439410s
+@@METRIC query_s=2.418482@@
+  query rep 2 : 2.418482s
+@@METRIC query_s=2.530793@@
+  query rep 3 : 2.530793s
+@@METRIC query_s=2.104903@@
+  query rep 4 : 2.104903s
+@@METRIC query_s=2.003997@@
+  query rep 5 : 2.003997s
+@@METRIC query_s=2.140326@@
+  query rep 6 : 2.140326s
+@@METRIC query_s=2.141691@@
+  query rep 7 : 2.141691s
+@@METRIC done=1@@
+
+bench complete.

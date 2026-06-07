@@ -1,0 +1,34 @@
+{
+  "spike": "exp-pdb-eviction",
+  "cluster": "admin@cherry-bench",
+  "metrics": {
+    "with_pdb_availability_pct": 100.00,
+    "without_pdb_availability_pct": 81.44,
+    "with_pdb_failed_requests": 0,
+    "without_pdb_failed_requests": 36,
+    "with_pdb_longest_outage_s": 0.00,
+    "without_pdb_longest_outage_s": 26.29,
+    "with_pdb_min_ready_replicas": 3,
+    "without_pdb_min_ready_replicas": 0,
+    "evictions_allowed": {
+      "with_pdb": 74,
+      "without_pdb": 247
+    },
+    "evictions_blocked_by_pdb_429": {
+      "with_pdb": 84,
+      "without_pdb": 0
+    }
+  },
+  "config": {
+    "image": "python:3.12-slim",
+    "replicas_per_variant": 4,
+    "pdb_min_available": 3,
+    "ready_delay_s": 6,
+    "baseline_s": 8,
+    "storm_s": 25,
+    "recovery_s": 20,
+    "req_interval_s": 0.1
+  },
+  "notes": "Same app deployed twice; the ONLY independent variable is the PodDisruptionBudget (minAvailable 3 of 4). Failure is induced with a real Eviction-API storm -- byte-for-byte what 'kubectl drain' issues -- so the PDB is enforced by the API server, not simulated. availability_pct = OK/total requests measured AFTER the storm started, over the storm+recovery window. longest_outage_s = longest consecutive run of failed requests (the worst client-visible gap). min_ready_replicas = fewest READY endpoints sampled during the window. evictions_blocked_by_pdb_429 = Eviction calls the API server rejected with HTTP 429 because honoring them would drop below minAvailable -- this throttling is the entire mechanism. NON-DESTRUCTIVE: only this namespace's pods are evicted; the node is never drained. Ties to reliability.py (missing-PDB findings).",
+  "ran_at": "2026-06-07T10:22:19Z"
+}

@@ -1,0 +1,97 @@
+# MinIO — S3-compatible object store, the data plane for this spike. chDB writes
+# the synthetic Parquet file here (INSERT INTO FUNCTION s3(...)) and then scans it
+# back (SELECT ... FROM s3(...)). Single node for the lab.
+#
+# Same MinIO pin as the sibling DuckDB/Vortex spikes (community edition went
+# maintenance-mode in 2025; last published tag below). S3 API on 9000, console 9001.
+# Garage is the live drop-in alternative; the chDB query-runner pattern is identical
+# against any S3-compatible endpoint.
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: minio-creds
+  namespace: exp-chdb-parquet
+type: Opaque
+stringData:
+  # DEMO VALUES — plaintext on purpose for the lab. Real life: SealedSecrets / SOPS /
+  # external secrets, and a scoped key, not the root user.
+  MINIO_ROOT_USER: "minioadmin"
+  MINIO_ROOT_PASSWORD: "minioadmin"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio
+  namespace: exp-chdb-parquet
+  labels:
+    app: minio
+spec:
+  selector:
+    app: minio
+  ports:
+    - name: s3-api
+      port: 9000
+      targetPort: 9000
+    - name: console
+      port: 9001
+      targetPort: 9001
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: minio
+  namespace: exp-chdb-parquet
+spec:
+  serviceName: minio
+  replicas: 1
+  selector:
+    matchLabels:
+      app: minio
+  template:
+    metadata:
+      labels:
+        app: minio
+    spec:
+      containers:
+        - name: minio
+          image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+          args: ["server", "/data", "--console-address", ":9001"]
+          envFrom:
+            - secretRef:
+                name: minio-creds
+          ports:
+            - containerPort: 9000
+              name: s3-api
+            - containerPort: 9001
+              name: console
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            httpGet:
+              path: /minio/health/ready
+              port: 9000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /minio/health/live
+              port: 9000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              memory: "1Gi"
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            # Guardrail: dataset is a few hundred MB of Parquet; 8Gi is the cap.
+            storage: 8Gi
