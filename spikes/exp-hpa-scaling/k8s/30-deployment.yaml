@@ -1,0 +1,113 @@
+# The autoscaling target: a CPU-burner Deployment.
+#
+# CPU request is deliberately small (150m) so a handful of concurrent /burn
+# requests push a replica well past the HPA's 50% target and trigger scale-out.
+# Memory is tiny. Per the experiment guardrails each pod is <= 1 CPU / <= 1Gi
+# and the HPA caps replicas at 6 (small pods) so the 4-vCPU worker is not
+# exhausted.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cpu-burner
+  namespace: exp-hpa-scaling
+  labels:
+    app: cpu-burner
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cpu-burner
+  template:
+    metadata:
+      labels:
+        app: cpu-burner
+    spec:
+      containers:
+        - name: server
+          image: python:3.12-slim
+          command: ["python3", "/app/server.py"]
+          ports:
+            - containerPort: 8080
+          resources:
+            requests:
+              cpu: 150m
+              memory: 64Mi
+            limits:
+              # No CPU limit: under load a replica may burst above its 150m
+              # request (that burst, divided by request, is exactly the >50%
+              # utilization the HPA reacts to). A hard CPU limit would throttle
+              # the container so badly that even the readiness handler can't get
+              # scheduled, flipping the pod NotReady and starving the HPA of
+              # metrics ("pods might be unready"). Memory is still capped.
+              memory: 128Mi
+          readinessProbe:
+            # Lenient on purpose: a busy CPU-burner can be slow to answer; we do
+            # not want transient scheduling contention to flip the pod NotReady
+            # (an unready pod is dropped from the HPA's metric set).
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 2
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 6
+          volumeMounts:
+            - name: src
+              mountPath: /app
+      volumes:
+        - name: src
+          configMap:
+            name: cpu-burner-src
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cpu-burner
+  namespace: exp-hpa-scaling
+spec:
+  selector:
+    app: cpu-burner
+  ports:
+    - port: 8080
+      targetPort: 8080
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: cpu-burner
+  namespace: exp-hpa-scaling
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: cpu-burner
+  minReplicas: 1
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50
+  behavior:
+    scaleUp:
+      # Make scale-up snappy and observable: no stabilization window, allow
+      # doubling pods every 15s. This is what we are measuring (reaction speed).
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 15
+        - type: Pods
+          value: 4
+          periodSeconds: 15
+      selectPolicy: Max
+    scaleDown:
+      # Shorter-than-default (60s) stabilization so the spike can also observe a
+      # scale-down within a bounded run, while still avoiding flapping.
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 30

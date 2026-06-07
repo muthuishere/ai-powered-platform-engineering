@@ -1,0 +1,55 @@
+# The PROBE: an in-cluster pod that curls the target Service every 0.25s and logs
+# one timestamped line per attempt (OK / FAIL). The driver scrapes these logs to
+# compute the downtime window across an upgrade — failed-request count and the
+# longest contiguous gap of failures (max gap seconds).
+#
+# Pinned on a CONTROL-PLANE node so the probe itself does not go down when the
+# WORKER reboots — otherwise we'd be measuring the probe's own outage, not the
+# target's. (Talos lets pods schedule on control-plane nodes once the
+# control-plane taint is tolerated.)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: probe
+  namespace: exp-upgrade
+  labels:
+    app: probe
+spec:
+  # Survive the worker reboot: run on the control plane and tolerate its taint.
+  nodeSelector:
+    node-role.kubernetes.io/control-plane: ""
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
+    - key: node-role.kubernetes.io/master
+      operator: Exists
+      effect: NoSchedule
+  restartPolicy: Never
+  containers:
+    - name: probe
+      image: registry.k8s.io/e2e-test-images/agnhost:2.53
+      command: ["/bin/sh", "-c"]
+      args:
+        - |
+          set -u
+          URL="http://probe-target.exp-upgrade.svc.cluster.local:80/healthz"
+          echo "PROBE_START $(date +%s.%N) url=${URL}"
+          while true; do
+            now="$(date +%s.%N)"
+            # -sf: silent + fail on HTTP >=400. 2s cap so a hung connection still
+            #      counts as a discrete FAIL tick rather than blocking the loop.
+            if curl -sf --max-time 2 -o /dev/null "${URL}"; then
+              echo "OK ${now}"
+            else
+              echo "FAIL ${now}"
+            fi
+            sleep 0.25
+          done
+      resources:
+        requests:
+          cpu: 10m
+          memory: 16Mi
+        limits:
+          cpu: 100m
+          memory: 64Mi

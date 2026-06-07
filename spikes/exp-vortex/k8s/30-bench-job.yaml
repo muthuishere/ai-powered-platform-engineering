@@ -1,0 +1,259 @@
+# The benchmark. A single Python Job that:
+#   1. Generates ONE synthetic dataset (deterministic seed) as an Arrow table.
+#   2. Writes it as Parquet (zstd) and as Vortex, locally, timing each write.
+#   3. Uploads both artifacts to MinIO; the on-disk size we report is the object
+#      size MinIO actually stores (the real "bytes on the lake").
+#   4. Downloads each back and scans the whole file to an Arrow table, timing the
+#      read to get scan rows/s.
+#   5. Computes compression ratio = raw_arrow_bytes / on_disk_bytes per format.
+#   6. Emits results.json (BOTH formats) to stdout between sentinels so run.sh can
+#      lift it out of the pod logs — no shared volume needed.
+#
+# The image is stock python:3.12-slim and we `pip install` vortex-data + pyarrow at
+# start. vortex-data ships manylinux2014 wheels for x86_64 AND aarch64 (Py >=3.11),
+# so this runs on both amd64 and arm64 nodes without a custom image or registry push.
+# If the wheel ever fails to install (air-gapped node, unsupported arch), the script
+# captures the Parquet baseline and records vortex metrics as null with a reason —
+# it never fabricates a number.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vortex-bench-src
+  namespace: exp-vortex
+data:
+  bench.py: |
+    #!/usr/bin/env python3
+    """Vortex vs Parquet on MinIO — size / write / scan, measured not guessed."""
+    import io, json, os, sys, time, traceback
+
+    import numpy as np
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    import boto3
+    from botocore.client import Config
+
+    ROWS      = int(os.environ.get("BENCH_ROWS", "5000000"))
+    BUCKET    = os.environ.get("S3_BUCKET", "bench")
+    ENDPOINT  = os.environ.get("S3_ENDPOINT", "http://minio:9000")
+    KEY_ID    = os.environ["AWS_ACCESS_KEY_ID"]
+    SECRET    = os.environ["AWS_SECRET_ACCESS_KEY"]
+    WORKDIR   = os.environ.get("WORKDIR", "/tmp")
+
+    def log(*a):
+        print(*a, file=sys.stderr, flush=True)
+
+    def make_table(rows: int) -> pa.Table:
+        """A realistic-ish analytics table: low-cardinality strings (compress well),
+        a sorted-ish int (run/delta friendly), a float, a timestamp. This is the
+        shape where columnar compression actually earns its keep."""
+        rng = np.random.default_rng(42)
+        cities = np.array(["chennai", "bengaluru", "mumbai", "delhi", "pune", "hyderabad"])
+        city   = cities[rng.integers(0, len(cities), rows)]
+        # near-sorted id: cumulative small steps -> great for Vortex/Parquet delta+RLE
+        user_id = np.cumsum(rng.integers(0, 3, rows, dtype=np.int64))
+        fare    = np.round(rng.gamma(2.0, 80.0, rows), 2)
+        status  = np.where(rng.random(rows) < 0.92, "completed", "cancelled")
+        ts      = (1_750_000_000 + np.arange(rows, dtype=np.int64)).astype("datetime64[s]")
+        return pa.table({
+            "user_id": pa.array(user_id),
+            "city":    pa.array(city),
+            "status":  pa.array(status),
+            "fare":    pa.array(fare),
+            "booked_at": pa.array(ts),
+        })
+
+    def raw_bytes(tbl: pa.Table) -> int:
+        """Uncompressed Arrow IPC size — the baseline for compression ratio."""
+        sink = pa.BufferOutputStream()
+        with pa.ipc.new_stream(sink, tbl.schema) as w:
+            w.write_table(tbl)
+        return sink.getvalue().size
+
+    def s3():
+        return boto3.client(
+            "s3", endpoint_url=ENDPOINT,
+            aws_access_key_id=KEY_ID, aws_secret_access_key=SECRET,
+            config=Config(signature_version="s3v4"), region_name="us-east-1",
+        )
+
+    def upload(cli, path, key):
+        cli.upload_file(path, BUCKET, key)
+        return cli.head_object(Bucket=BUCKET, Key=key)["ContentLength"]
+
+    def download(cli, key, path):
+        cli.download_file(BUCKET, key, path)
+
+    def write_parquet(tbl, path):
+        t0 = time.perf_counter()
+        pq.write_table(tbl, path, compression="zstd")
+        return time.perf_counter() - t0
+
+    def scan_parquet(path):
+        t0 = time.perf_counter()
+        out = pq.read_table(path)
+        return time.perf_counter() - t0, out.num_rows
+
+    def write_vortex(tbl, path):
+        import vortex as vx
+        t0 = time.perf_counter()
+        arr = vx.array(tbl)            # arrow -> vortex array (compresses)
+        vx.io.write(arr, path)         # encode + persist
+        return time.perf_counter() - t0
+
+    def scan_vortex(path):
+        import vortex as vx
+        t0 = time.perf_counter()
+        out = vx.open(path).scan().read_all().to_arrow_table()
+        return time.perf_counter() - t0, out.num_rows
+
+    def bench_format(name, ext, writer, scanner, tbl, cli, raw):
+        local = os.path.join(WORKDIR, f"data.{ext}")
+        key   = f"vortex-vs-parquet/data.{ext}"
+        write_s = writer(tbl, local)
+        on_disk = upload(cli, local, key)
+        back    = os.path.join(WORKDIR, f"rt.{ext}")
+        download(cli, key, back)
+        scan_s, n = scanner(back)
+        return {
+            "on_disk_bytes":     int(on_disk),
+            "raw_arrow_bytes":   int(raw),
+            "compression_ratio": round(raw / on_disk, 4) if on_disk else None,
+            "ingest_s":          round(write_s, 4),
+            "scan_s":            round(scan_s, 4),
+            "scan_rows_per_s":   int(n / scan_s) if scan_s > 0 else None,
+            "rows":              int(n),
+        }
+
+    def main():
+        log(f"generating {ROWS} rows ...")
+        tbl = make_table(ROWS)
+        raw = raw_bytes(tbl)
+        log(f"raw arrow bytes = {raw}")
+        cli = s3()
+
+        results = {
+            "spike": "exp-vortex",
+            "cluster": os.environ.get("CLUSTER", "unknown"),
+            "dataset": {"rows": ROWS, "raw_arrow_bytes": int(raw),
+                        "schema": [f.name for f in tbl.schema]},
+            "formats": {},
+            "metrics": {},
+            "notes": "",
+        }
+
+        # --- Parquet baseline (must always work) ---
+        log("== parquet ==")
+        results["formats"]["parquet"] = bench_format(
+            "parquet", "parquet", write_parquet, scan_parquet, tbl, cli, raw)
+        log(json.dumps(results["formats"]["parquet"]))
+
+        # --- Vortex (graceful if the wheel/runtime is unavailable) ---
+        log("== vortex ==")
+        try:
+            import vortex as vx  # noqa: F401  (import here so failure is localized)
+            results["formats"]["vortex"] = bench_format(
+                "vortex", "vortex", write_vortex, scan_vortex, tbl, cli, raw)
+            log(json.dumps(results["formats"]["vortex"]))
+            results["notes"] = f"vortex-data {getattr(vx, '__version__', '?')} vs pyarrow parquet(zstd); both round-tripped through MinIO."
+        except Exception as e:
+            results["formats"]["vortex"] = None
+            results["notes"] = ("vortex unavailable on this node: "
+                                + repr(e) + " — Parquet baseline captured; "
+                                "vortex metrics left null (no fabricated numbers).")
+            log("VORTEX FAILED:\n" + traceback.format_exc())
+
+        # --- top-level metrics contract: report the WINNER (vortex if present) ---
+        # The spec's results.json carries one metrics block; we headline Vortex when
+        # it ran, else Parquet, and keep the full per-format breakdown alongside.
+        head = results["formats"].get("vortex") or results["formats"]["parquet"]
+        results["metrics"] = {
+            "ingest_s":          head["ingest_s"],
+            "scan_rows_per_s":   head["scan_rows_per_s"],
+            "query_p50_ms":      None,
+            "query_p95_ms":      None,
+            "on_disk_bytes":     head["on_disk_bytes"],
+            "compression_ratio": head["compression_ratio"],
+        }
+
+        print("=====RESULTS_JSON_BEGIN=====", flush=True)
+        print(json.dumps(results, indent=2), flush=True)
+        print("=====RESULTS_JSON_END=====", flush=True)
+
+    if __name__ == "__main__":
+        main()
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: vortex-bench
+  namespace: exp-vortex
+spec:
+  backoffLimit: 1
+  template:
+    metadata:
+      labels:
+        app: vortex-bench
+    spec:
+      restartPolicy: Never
+      initContainers:
+        - name: wait-bucket
+          image: quay.io/minio/mc:RELEASE.2025-04-03T17-07-56Z
+          env:
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef: { name: minio-creds, key: AWS_ACCESS_KEY_ID }
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef: { name: minio-creds, key: AWS_SECRET_ACCESS_KEY }
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              until mc alias set local http://minio:9000 \
+                    "$AWS_ACCESS_KEY_ID" "$AWS_SECRET_ACCESS_KEY" >/dev/null 2>&1; do
+                sleep 2
+              done
+              until mc ls local/bench >/dev/null 2>&1; do sleep 2; done
+              echo "bucket reachable"
+      containers:
+        - name: bench
+          image: python:3.12-slim
+          env:
+            - name: S3_ENDPOINT
+              value: "http://minio:9000"
+            - name: S3_BUCKET
+              value: "bench"
+            - name: BENCH_ROWS
+              value: "5000000"
+            - name: CLUSTER
+              value: "cherry-bench"
+            - name: PIP_DISABLE_PIP_VERSION_CHECK
+              value: "1"
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef: { name: minio-creds, key: AWS_ACCESS_KEY_ID }
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef: { name: minio-creds, key: AWS_SECRET_ACCESS_KEY }
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              echo "installing deps (vortex-data, pyarrow, numpy, boto3) ..." >&2
+              pip install --no-cache-dir \
+                  "vortex-data>=0.70" pyarrow numpy boto3 >&2
+              python /src/bench.py
+          volumeMounts:
+            - name: src
+              mountPath: /src
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              memory: "3Gi"
+      volumes:
+        - name: src
+          configMap:
+            name: vortex-bench-src

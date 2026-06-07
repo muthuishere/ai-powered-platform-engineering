@@ -1,0 +1,41 @@
+[1;34m[run][0m Using current context: admin@cherry-bench
+[1;34m[run][0m Applying namespace, ConfigMap, both Deployments + Services + the PDB…
+namespace/exp-pdb-eviction created
+configmap/pdb-app created
+deployment.apps/app-with-pdb created
+service/app-with-pdb created
+poddisruptionbudget.policy/app-with-pdb created
+deployment.apps/app-without-pdb created
+service/app-without-pdb created
+[1;34m[run][0m Waiting for both Deployments to roll out (4/4 each)…
+Waiting for deployment "app-with-pdb" rollout to finish: 0 of 4 updated replicas are available...
+Waiting for deployment "app-with-pdb" rollout to finish: 1 of 4 updated replicas are available...
+Waiting for deployment "app-with-pdb" rollout to finish: 2 of 4 updated replicas are available...
+Waiting for deployment "app-with-pdb" rollout to finish: 3 of 4 updated replicas are available...
+deployment "app-with-pdb" successfully rolled out
+deployment "app-without-pdb" successfully rolled out
+NAME           MIN AVAILABLE   MAX UNAVAILABLE   ALLOWED DISRUPTIONS   AGE
+app-with-pdb   3               N/A               1                     10s
+NAME                              READY   STATUS    RESTARTS   AGE   IP             NODE                    NOMINATED NODE   READINESS GATES
+app-with-pdb-5969cb6ddf-8kjl2     1/1     Running   0          10s   10.244.0.117   cherry-bench-worker-1   <none>           <none>
+app-with-pdb-5969cb6ddf-bpjwn     1/1     Running   0          10s   10.244.0.120   cherry-bench-worker-1   <none>           <none>
+app-with-pdb-5969cb6ddf-m4r2c     1/1     Running   0          10s   10.244.0.118   cherry-bench-worker-1   <none>           <none>
+app-with-pdb-5969cb6ddf-z97ms     1/1     Running   0          10s   10.244.0.119   cherry-bench-worker-1   <none>           <none>
+app-without-pdb-945897d4f-bst9f   1/1     Running   0          10s   10.244.0.121   cherry-bench-worker-1   <none>           <none>
+app-without-pdb-945897d4f-tzzrl   1/1     Running   0          10s   10.244.0.122   cherry-bench-worker-1   <none>           <none>
+app-without-pdb-945897d4f-vs5v7   1/1     Running   0          10s   10.244.0.123   cherry-bench-worker-1   <none>           <none>
+app-without-pdb-945897d4f-wdkjp   1/1     Running   0          10s   10.244.0.124   cherry-bench-worker-1   <none>           <none>
+[1;34m[run][0m Starting in-cluster traffic loop (traffic-loop)…
+pod/traffic-loop created
+[1;34m[run][0m Baseline traffic for 8s (expect ~100% availability)…
+[1;34m[run][0m Starting kubectl proxy for raw Eviction API calls…
+[1;34m[run][0m Eviction storm time (epoch): 1780827694.213802494
+[1;34m[run][0m Storming evictions for 25s against BOTH variants…
+[1;34m[run][0m evictions  with-pdb: allowed=74 blocked(429)=84
+[1;34m[run][0m evictions  without-pdb: allowed=247 blocked(429)=0
+[1;34m[run][0m Observing recovery for 20s…
+[1;34m[run][0m Collecting traffic log…
+[1;34m[run][0m with-pdb:    total=401 fail=0 avail=100.00% maxgap=0.00s min_ready=3
+[1;34m[run][0m without-pdb: total=194 fail=36 avail=81.44% maxgap=26.29s min_ready=0
+[1;34m[run][0m Wrote /root/work/spikes/exp-pdb-eviction/results.json and /root/work/spikes/exp-pdb-eviction/RESULTS.md.
+[1;34m[run][0m Done. Tear down with: ./run.sh --teardown

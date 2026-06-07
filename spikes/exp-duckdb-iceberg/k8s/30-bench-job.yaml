@@ -1,0 +1,198 @@
+# The benchmark, in-cluster. One pod runs BOTH halves of the experiment so they share
+# the SQLite catalog file (emptyDir) and the metadata-location handoff:
+#
+#   1. create_table.py  (pyiceberg) — writes Parquet + Iceberg metadata to MinIO,
+#      prints ICEBERG_METADATA_LOCATION + snapshot ids.
+#   2. bench.py         (duckdb)    — reads it back, times scans/queries/time-travel,
+#      prints M_* metric lines.
+#
+# The wrapper captures step 1's output, exports the handoff vars, then runs step 2.
+# All metric lines land in the pod log; run.sh greps them into results.json.
+#
+# DuckDB is a STATELESS query runner here: kill this pod, run another against the same
+# bucket, and it sees the same Iceberg table. The durable lake lives on MinIO.
+#
+# Scripts are shipped as a ConfigMap so this directory is self-contained. They are the
+# SAME files as demo/create_table.py and demo/bench.py — edit one, sync the other (or
+# regenerate: kubectl create configmap iceberg-scripts \
+#   --from-file=demo/create_table.py --from-file=demo/bench.py).
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: iceberg-scripts
+  namespace: exp-duckdb-iceberg
+data:
+  create_table.py: |
+    # SYNC WITH demo/create_table.py
+    import os, time
+    import pyarrow as pa
+    from pyiceberg.catalog.sql import SqlCatalog
+    S3_ENDPOINT = os.environ.get("S3_ENDPOINT", "http://minio:9000")
+    S3_ACCESS_KEY = os.environ.get("S3_ACCESS_KEY", "minioadmin")
+    S3_SECRET_KEY = os.environ.get("S3_SECRET_KEY", "minioadmin123")
+    BUCKET = os.environ.get("ICEBERG_BUCKET", "warehouse")
+    NAMESPACE = os.environ.get("ICEBERG_NAMESPACE", "lake")
+    TABLE = os.environ.get("ICEBERG_TABLE", "trips")
+    CATALOG_URI = os.environ.get("CATALOG_URI", "sqlite:////tmp/iceberg/catalog.db")
+    N_ROWS = int(os.environ.get("N_ROWS", "200000"))
+    if CATALOG_URI.startswith("sqlite:////"):
+        os.makedirs(os.path.dirname(CATALOG_URI[len("sqlite:///"):]), exist_ok=True)
+    catalog = SqlCatalog("lab", **{
+        "uri": CATALOG_URI, "warehouse": f"s3://{BUCKET}/",
+        "s3.endpoint": S3_ENDPOINT, "s3.access-key-id": S3_ACCESS_KEY,
+        "s3.secret-access-key": S3_SECRET_KEY, "s3.path-style-access": "true",
+        "s3.region": "us-east-1"})
+    try: catalog.drop_table(f"{NAMESPACE}.{TABLE}")
+    except Exception: pass
+    try: catalog.create_namespace(NAMESPACE)
+    except Exception: pass
+    half = N_ROWS // 2
+    cities = ["chennai", "bengaluru", "mumbai", "delhi", "pune"]
+    def batch(start, n, day):
+        ids = list(range(start, start + n))
+        return pa.table({
+            "id": pa.array(ids, type=pa.int64()),
+            "city": pa.array([cities[i % len(cities)] for i in ids], type=pa.string()),
+            "fare": pa.array([100.0 + (i % 400) for i in ids], type=pa.float64()),
+            "booked_at": pa.array([0 for _ in ids], type=pa.int64()),
+            "day": pa.array([day] * n, type=pa.int32())})
+    b1 = batch(0, half, 1)
+    b2 = batch(half, N_ROWS - half, 2)
+    table = catalog.create_table(f"{NAMESPACE}.{TABLE}", schema=b1.schema)
+    t0 = time.perf_counter()
+    table.append(b1); snap_first = table.current_snapshot().snapshot_id
+    table.append(b2); ingest_s = time.perf_counter() - t0
+    snap_last = table.current_snapshot().snapshot_id
+    metadata_location = table.metadata_location
+    print(f"ICEBERG_INGEST_S={ingest_s:.4f}")
+    print(f"ICEBERG_ROWS={N_ROWS}")
+    print(f"ICEBERG_METADATA_LOCATION={metadata_location}")
+    print(f"ICEBERG_SNAPSHOT_FIRST={snap_first}")
+    print(f"ICEBERG_SNAPSHOT_LAST={snap_last}")
+  bench.py: |
+    # SYNC WITH demo/bench.py
+    import os, time
+    import duckdb
+    ENDPOINT_HOSTPORT = os.environ["S3_ENDPOINT_HOSTPORT"]
+    ACCESS_KEY = os.environ["S3_ACCESS_KEY"]
+    SECRET_KEY = os.environ["S3_SECRET_KEY"]
+    USE_SSL = os.environ.get("S3_USE_SSL", "false")
+    METADATA = os.environ["ICEBERG_METADATA_LOCATION"]
+    SNAPSHOT_FIRST = os.environ["ICEBERG_SNAPSHOT_FIRST"]
+    BUCKET = os.environ.get("ICEBERG_BUCKET", "warehouse")
+    NAMESPACE = os.environ.get("ICEBERG_NAMESPACE", "lake")
+    TABLE = os.environ.get("ICEBERG_TABLE", "trips")
+    N_QUERIES = int(os.environ.get("N_QUERIES", "50"))
+    con = duckdb.connect()
+    con.execute("INSTALL httpfs; INSTALL iceberg; LOAD httpfs; LOAD iceberg;")
+    con.execute(f"""CREATE OR REPLACE SECRET minio (TYPE s3, KEY_ID '{ACCESS_KEY}',
+        SECRET '{SECRET_KEY}', ENDPOINT '{ENDPOINT_HOSTPORT}', URL_STYLE 'path',
+        USE_SSL {USE_SSL});""")
+    def pct(values, p):
+        s = sorted(values); k = (len(s) - 1) * (p / 100.0)
+        lo = int(k); hi = min(lo + 1, len(s) - 1)
+        return s[lo] + (s[hi] - s[lo]) * (k - lo)
+    t0 = time.perf_counter()
+    scan_rows = con.execute(f"SELECT count(*) FROM iceberg_scan('{METADATA}')").fetchone()[0]
+    scan_s = time.perf_counter() - t0
+    scan_rows_per_s = int(scan_rows / scan_s) if scan_s > 0 else 0
+    q = (f"SELECT city, count(*), sum(fare) FROM iceberg_scan('{METADATA}') GROUP BY city")
+    durations_ms = []
+    for _ in range(N_QUERIES):
+        s = time.perf_counter(); con.execute(q).fetchall()
+        durations_ms.append((time.perf_counter() - s) * 1000.0)
+    p50 = pct(durations_ms, 50); p95 = pct(durations_ms, 95)
+    s = time.perf_counter()
+    con.execute(f"SELECT count(*) FROM iceberg_scan('{METADATA}', snapshot_from_id = {SNAPSHOT_FIRST})").fetchone()
+    time_travel_ms = (time.perf_counter() - s) * 1000.0
+    glob = f"s3://{BUCKET}/{NAMESPACE}.db/{TABLE}/**"
+    try:
+        on_disk_bytes = con.execute(f"SELECT coalesce(sum(size), 0) FROM glob('{glob}')").fetchone()[0]
+    except Exception:
+        on_disk_bytes = 0
+    print(f"M_SCAN_ROWS_PER_S={scan_rows_per_s}")
+    print(f"M_QUERY_P50_MS={p50:.3f}")
+    print(f"M_QUERY_P95_MS={p95:.3f}")
+    print(f"M_TIME_TRAVEL_MS={time_travel_ms:.3f}")
+    print(f"M_ON_DISK_BYTES={int(on_disk_bytes)}")
+    print(f"M_SCAN_ROWS={int(scan_rows)}")
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: iceberg-bench
+  namespace: exp-duckdb-iceberg
+spec:
+  backoffLimit: 2
+  template:
+    metadata:
+      labels:
+        app: iceberg-bench
+    spec:
+      restartPolicy: Never
+      initContainers:
+        # Wait for MinIO's S3 endpoint before we touch the bucket.
+        - name: wait-minio
+          image: minio/mc:RELEASE.2025-04-08T15-39-49Z
+          env:
+            - name: MINIO_ROOT_USER
+              valueFrom: { secretKeyRef: { name: minio-creds, key: MINIO_ROOT_USER } }
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom: { secretKeyRef: { name: minio-creds, key: MINIO_ROOT_PASSWORD } }
+          command: ["/bin/sh", "-c"]
+          args:
+            - until mc alias set local http://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null 2>&1; do sleep 2; done
+      containers:
+        - name: runner
+          # pyiceberg (the writer) + duckdb (the reader) both run here.
+          image: python:3.12-slim
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              pip install --quiet --no-cache-dir \
+                "pyiceberg[sql-sqlite,pyarrow,s3fs]==0.9.1" "duckdb==1.5.3"
+              echo "=== create_table.py (pyiceberg write) ==="
+              # Capture the handoff (metadata location + snapshot ids) and re-export.
+              python /scripts/create_table.py | tee /tmp/create.out
+              # Export the ICEBERG_* lines so bench.py picks them up.
+              while IFS='=' read -r k v; do
+                case "$k" in ICEBERG_*) export "$k=$v";; esac
+              done < /tmp/create.out
+              echo "=== bench.py (duckdb read + timings) ==="
+              python /scripts/bench.py
+          env:
+            - name: S3_ENDPOINT
+              value: "http://minio:9000"
+            - name: S3_ENDPOINT_HOSTPORT
+              value: "minio:9000"
+            - name: S3_USE_SSL
+              value: "false"
+            - name: S3_ACCESS_KEY
+              valueFrom: { secretKeyRef: { name: minio-creds, key: MINIO_ROOT_USER } }
+            - name: S3_SECRET_KEY
+              valueFrom: { secretKeyRef: { name: minio-creds, key: MINIO_ROOT_PASSWORD } }
+            - name: ICEBERG_BUCKET
+              value: "warehouse"
+            - name: ICEBERG_NAMESPACE
+              value: "lake"
+            - name: ICEBERG_TABLE
+              value: "trips"
+            - name: CATALOG_URI
+              value: "sqlite:////tmp/iceberg/catalog.db"
+            - name: N_ROWS
+              value: "200000"
+            - name: N_QUERIES
+              value: "50"
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+            - name: work
+              mountPath: /tmp/iceberg
+      volumes:
+        - name: scripts
+          configMap:
+            name: iceberg-scripts
+        - name: work
+          emptyDir: {}

@@ -1,0 +1,9 @@
+# Spike: exp-vortex — Vortex columnar format vs Parquet, both stored on MinIO.
+# Everything for this experiment lives in one namespace so a single
+# `kubectl delete ns exp-vortex` is a clean teardown.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: exp-vortex
+  labels:
+    app.kubernetes.io/part-of: exp-vortex

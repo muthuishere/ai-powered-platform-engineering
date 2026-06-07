@@ -1,0 +1,155 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mochallama
+  namespace: exp-mochallama-minio
+  labels:
+    app.kubernetes.io/name: mochallama
+    app.kubernetes.io/component: inference
+    experiment: exp-mochallama-minio
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mochallama
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mochallama
+        app.kubernetes.io/component: inference
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      # ----------------------------------------------------------------------
+      # The whole point of this spike: the model is NOT baked into the image.
+      # This initContainer pulls the GGUF from MinIO (our own S3) into a shared
+      # emptyDir; the app container then loads it offline via file://. Swap the
+      # model in MinIO (model-config) and the SAME operator image serves it.
+      # ----------------------------------------------------------------------
+      initContainers:
+        - name: model-pull
+          image: quay.io/minio/mc:RELEASE.2025-04-03T17-07-56Z
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -euo pipefail
+              export MC_CONFIG_DIR=/tmp/.mc
+              SRC="s3/${MODEL_BUCKET}/${MODEL_FILENAME}"
+              echo "[model-pull] connecting to ${S3_ENDPOINT}"
+              until mc alias set s3 "${S3_ENDPOINT}" "${AWS_ACCESS_KEY_ID}" "${AWS_SECRET_ACCESS_KEY}" >/dev/null 2>&1; do
+                sleep 2
+              done
+              echo "[model-pull] waiting for ${SRC} to exist in the bucket"
+              until mc stat "${SRC}" >/dev/null 2>&1; do
+                echo "[model-pull] not yet present, retrying..."
+                sleep 5
+              done
+              START=$(date +%s.%N)
+              echo "[model-pull] cp ${SRC} -> /models/${MODEL_FILENAME}"
+              mc cp "${SRC}" "/models/${MODEL_FILENAME}"
+              END=$(date +%s.%N)
+              test -s "/models/${MODEL_FILENAME}"
+              # Stamp the pull duration so run.sh can read model_pull_s from the bucket.
+              awk "BEGIN { printf \"%.3f\", ${END} - ${START} }" > /models/.model_pull_s
+              echo "[model-pull] pulled in $(cat /models/.model_pull_s)s"
+              ls -lh /models/
+          env:
+            - name: S3_ENDPOINT
+              valueFrom:
+                configMapKeyRef: { name: model-config, key: S3_ENDPOINT }
+            - name: MODEL_BUCKET
+              valueFrom:
+                configMapKeyRef: { name: model-config, key: MODEL_BUCKET }
+            - name: MODEL_FILENAME
+              valueFrom:
+                configMapKeyRef: { name: model-config, key: MODEL_FILENAME }
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef: { name: minio-creds, key: AWS_ACCESS_KEY_ID }
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef: { name: minio-creds, key: AWS_SECRET_ACCESS_KEY }
+          volumeMounts:
+            - name: models
+              mountPath: /models
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+      containers:
+        - name: operator
+          # SAME image as the baked-in talos-ai-operator — only the model SOURCE
+          # differs. The app resolves file:///models/<MODEL_FILENAME> regardless
+          # of how the file got there. Build/push talos-ai-operator first (see
+          # README) or point this at wherever you pushed it.
+          image: gitea.ops.svc.cluster.local:5000/platform/talos-ai-operator:0.1.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            # Drives llamacpp.model.url=file:///models/${MODEL_FILENAME}
+            - name: MODEL_FILENAME
+              valueFrom:
+                configMapKeyRef: { name: model-config, key: MODEL_FILENAME }
+            - name: MODEL_CONTEXT_SIZE
+              value: "4096"
+            - name: MODEL_THREADS
+              value: "4"
+            - name: MODEL_TEMPERATURE
+              value: "0.2"
+          readinessProbe:
+            # mochallama Actuator readiness reports UP only once the model is READY.
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 60   # CPU model load is slow; be patient
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: "2"
+              memory: "3Gi"
+            limits:
+              cpu: "4"
+              memory: "6Gi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            # Shared model dir — overrides the image's baked /models with the
+            # MinIO-pulled GGUF. This is the baked-in -> object-storage swap.
+            - name: models
+              mountPath: /models
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        # emptyDir: lives for the pod's lifetime; re-pulled from MinIO on every
+        # (re)schedule. The image stays small; the model travels over S3.
+        - name: models
+          emptyDir:
+            sizeLimit: 4Gi
+        - name: tmp
+          emptyDir: {}

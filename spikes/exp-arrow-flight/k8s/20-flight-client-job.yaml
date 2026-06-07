@@ -1,0 +1,146 @@
+# Arrow Flight client Job. Connects to the flight-server Service, runs N timed
+# DoGet fetches of the full synthetic table, and reports:
+#   - scan_rows_per_s : rows fetched / wall time, best (steady-state) iteration
+#   - query_p50_ms / query_p95_ms : end-to-end fetch latency distribution
+#   - feather vs parquet on-disk bytes : the SAME table written both ways (zstd)
+#
+# Output is a single line `RESULTS_JSON={...}` on stdout so run.sh can grep it out
+# of the Job logs without needing a shared volume between pods.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: flight-client-src
+  namespace: exp-arrow-flight
+data:
+  client.py: |
+    """Arrow Flight client benchmark (pyarrow.flight, 2026 API)."""
+    import json
+    import os
+    import statistics
+    import time
+    import tempfile
+    import pathlib
+    import pyarrow as pa
+    import pyarrow.flight as flight
+    import pyarrow.feather as feather
+    import pyarrow.parquet as pq
+
+    HOST = os.environ.get("FLIGHT_HOST", "flight-server")
+    PORT = os.environ.get("FLIGHT_PORT", "8815")
+    ITERS = int(os.environ.get("FLIGHT_ITERS", "20"))
+    DATASET = "synthetic"
+
+    def fetch(client, info):
+        # Time a full DoGet: open the stream, read every RecordBatch into a Table.
+        ticket = info.endpoints[0].ticket
+        t0 = time.perf_counter()
+        reader = client.do_get(ticket)
+        table = reader.read_all()
+        dt = time.perf_counter() - t0
+        return dt, table
+
+    def main():
+        location = f"grpc://{HOST}:{PORT}"
+        print(f"pyarrow {pa.__version__}: connecting to {location}", flush=True)
+        client = flight.connect(location)
+        client.wait_for_available(timeout=120)
+
+        desc = flight.FlightDescriptor.for_path(DATASET.encode())
+        info = client.get_flight_info(desc)
+        rows = info.total_records
+        print(f"flight: {rows:,} rows, schema:\n{info.schema}", flush=True)
+
+        # Warm up one fetch (JIT of the gRPC path, first-touch pages), not counted.
+        warm_dt, table = fetch(client, info)
+        print(f"warmup fetch: {warm_dt*1000:.1f} ms", flush=True)
+
+        latencies_ms = []
+        best_rows_per_s = 0.0
+        for i in range(ITERS):
+            dt, t = fetch(client, info)
+            latencies_ms.append(dt * 1000.0)
+            rps = t.num_rows / dt if dt > 0 else 0.0
+            best_rows_per_s = max(best_rows_per_s, rps)
+            print(f"iter {i+1:>2}/{ITERS}: {dt*1000:7.1f} ms  "
+                  f"{rps/1e6:6.2f} M rows/s", flush=True)
+
+        latencies_ms.sort()
+        def pct(p):
+            if not latencies_ms:
+                return None
+            k = max(0, min(len(latencies_ms) - 1,
+                           int(round((p / 100.0) * (len(latencies_ms) - 1)))))
+            return latencies_ms[k]
+
+        # On-disk size comparison: write the fetched table both ways with zstd.
+        tmp = pathlib.Path(tempfile.mkdtemp())
+        fpath, ppath = tmp / "t.feather", tmp / "t.parquet"
+        feather.write_feather(table, fpath, compression="zstd")
+        pq.write_table(table, ppath, compression="zstd")
+        feather_bytes = fpath.stat().st_size
+        parquet_bytes = ppath.stat().st_size
+
+        metrics = {
+            "scan_rows_per_s": round(best_rows_per_s),
+            "query_p50_ms": round(pct(50), 3),
+            "query_p95_ms": round(pct(95), 3),
+            "query_min_ms": round(latencies_ms[0], 3),
+            "query_mean_ms": round(statistics.mean(latencies_ms), 3),
+            "in_memory_bytes": table.nbytes,
+            "feather_bytes": feather_bytes,
+            "parquet_bytes": parquet_bytes,
+            "on_disk_bytes": feather_bytes,
+            "rows": rows,
+            "iters": ITERS,
+        }
+        print("RESULTS_JSON=" + json.dumps(metrics), flush=True)
+
+    if __name__ == "__main__":
+        main()
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: flight-client
+  namespace: exp-arrow-flight
+spec:
+  backoffLimit: 2
+  template:
+    metadata:
+      labels:
+        app: flight-client
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: flight-client
+          image: python:3.12-slim
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              pip install --no-cache-dir --quiet "pyarrow==${PYARROW_VERSION}"
+              exec python /src/client.py
+          env:
+            - name: PYARROW_VERSION
+              value: "18.1.0"
+            - name: FLIGHT_HOST
+              value: "flight-server"
+            - name: FLIGHT_PORT
+              value: "8815"
+            - name: FLIGHT_ITERS
+              value: "20"
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "2"
+              memory: "2Gi"
+          volumeMounts:
+            - name: src
+              mountPath: /src
+      volumes:
+        - name: src
+          configMap:
+            name: flight-client-src

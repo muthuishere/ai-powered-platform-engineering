@@ -1,0 +1,25 @@
+{
+  "spike": "exp-hpa-scaling",
+  "cluster": "admin@cherry-bench",
+  "metrics": {
+    "scale_up_latency_s": 25.0,
+    "time_to_stabilize_s": 88.0,
+    "peak_ready_replicas": 6,
+    "peak_cpu_utilization_pct": 341,
+    "scale_down_latency_s": 141.0
+  },
+  "config": {
+    "image": "python:3.12-slim",
+    "cpu_request_milli": 150,
+    "hpa_target_cpu_pct": 50,
+    "hpa_min_replicas": 1,
+    "hpa_max_replicas": 6,
+    "scaleup_stabilization_s": 0,
+    "scaledown_stabilization_s": 60,
+    "load_concurrency": 8,
+    "burn_ms_per_request": 100,
+    "poll_interval_s": 3
+  },
+  "notes": "Measured on cluster `admin@cherry-bench`, namespace exp-hpa-scaling. CPU-burner Deployment (150m CPU request, no CPU limit, /burn busy-loop that yields the GIL) behind a Service, autoscaling/v2 HPA target 50% CPU min=1 max=6 with scaleUp stabilizationWindow=0. T0=load start (8 concurrent /burn?ms=100 loops from a generator pod). scale_up_latency_s = (first time readyReplicas>1) - T0. time_to_stabilize_s = (replica count unchanged for 30s, while >1) - T0. peak_cpu_utilization_pct is the max HPA-observed CPU% (HPA sees average across replicas, so it can read near 50% once spread). scale_down_latency_s = (back to 1 replica) - load-stop; HPA scaleDown stabilizationWindow=60s, capped at 300s observation.",
+  "ran_at": "2026-06-07T10:31:39Z"
+}

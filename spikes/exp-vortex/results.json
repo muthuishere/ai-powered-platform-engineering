@@ -1,0 +1,45 @@
+{
+  "spike": "exp-vortex",
+  "cluster": "cherry-bench",
+  "dataset": {
+    "rows": 5000000,
+    "raw_arrow_bytes": 238337120,
+    "schema": [
+      "user_id",
+      "city",
+      "status",
+      "fare",
+      "booked_at"
+    ]
+  },
+  "formats": {
+    "parquet": {
+      "on_disk_bytes": 29579401,
+      "raw_arrow_bytes": 238337120,
+      "compression_ratio": 8.0575,
+      "ingest_s": 1.0023,
+      "scan_s": 0.2863,
+      "scan_rows_per_s": 17461739,
+      "rows": 5000000
+    },
+    "vortex": {
+      "on_disk_bytes": 23416452,
+      "raw_arrow_bytes": 238337120,
+      "compression_ratio": 10.1782,
+      "ingest_s": 1.9268,
+      "scan_s": 0.1633,
+      "scan_rows_per_s": 30622221,
+      "rows": 5000000
+    }
+  },
+  "metrics": {
+    "ingest_s": 1.9268,
+    "scan_rows_per_s": 30622221,
+    "query_p50_ms": null,
+    "query_p95_ms": null,
+    "on_disk_bytes": 23416452,
+    "compression_ratio": 10.1782
+  },
+  "notes": "vortex-data 0.74.0 vs pyarrow parquet(zstd); both round-tripped through MinIO.",
+  "ran_at": "2026-06-07T09:59:22.399662+00:00"
+}

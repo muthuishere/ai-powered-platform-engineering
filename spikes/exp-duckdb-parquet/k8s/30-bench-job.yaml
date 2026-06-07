@@ -1,0 +1,171 @@
+# The benchmark, in-cluster. DuckDB is a stateless query runner: this Job spins up,
+# writes a synthetic Parquet file to MinIO, scans it, times a few aggregations, and
+# exits. All durable state stays on MinIO as a plain Parquet file.
+#
+# The official duckdb/duckdb image is DISTROLESS (no shell, no sed). So token
+# substitution can't happen inside the duckdb container. Instead:
+#   initContainer (busybox, has a shell) renders @TOKEN@ -> values into an emptyDir,
+#   then the distroless duckdb container runs:  /duckdb :memory: ".read /work/bench.sql"
+# which executes the file and exits non-interactively (verified against DuckDB CLI
+# docs: a final SQL/dot-command string arg runs and exits; distroless image's
+# entrypoint is /duckdb).
+#
+# bench.sql here is a COPY of demo/bench.sql kept inline so k8s/ is self-contained.
+# If you edit one, sync the other (or regenerate this CM with:
+#   kubectl -n exp-duckdb-parquet create configmap duckdb-bench-sql \
+#     --from-file=bench.sql=demo/bench.sql --dry-run=client -o yaml ).
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: duckdb-bench-sql
+  namespace: exp-duckdb-parquet
+data:
+  bench.sql: |
+    .timer on
+
+    INSTALL httpfs;
+    INSTALL parquet;
+    LOAD httpfs;
+    LOAD parquet;
+
+    CREATE OR REPLACE SECRET minio (
+        TYPE      s3,
+        KEY_ID    '@S3_KEY_ID@',
+        SECRET    '@S3_SECRET@',
+        ENDPOINT  '@S3_ENDPOINT@',
+        URL_STYLE 'path',
+        USE_SSL   @S3_USE_SSL@
+    );
+
+    SELECT '@@BENCH_TAG ingest@@' AS step;
+    COPY (
+        SELECT
+            range                                              AS id,
+            ['chennai','bengaluru','mumbai','delhi','pune'][
+                (range % 5) + 1]                               AS city,
+            (range * 2654435761 % 100000) / 100.0             AS amount,
+            TIMESTAMP '2026-06-01 00:00:00'
+                + INTERVAL (range % 86400) SECOND             AS ts
+        FROM range(@ROW_COUNT@)
+    )
+    TO 's3://@S3_BUCKET@/data.parquet'
+        (FORMAT parquet, COMPRESSION zstd, ROW_GROUP_SIZE 1000000);
+
+    SELECT '@@BENCH_TAG filesize@@' AS step;
+    SELECT
+        sum(total_compressed_size)   AS parquet_compressed_bytes,
+        sum(total_uncompressed_size) AS parquet_uncompressed_bytes
+    FROM parquet_metadata('s3://@S3_BUCKET@/data.parquet');
+
+    SELECT '@@BENCH_TAG scan@@' AS step;
+    SELECT count(*) AS rows_scanned
+    FROM read_parquet('s3://@S3_BUCKET@/data.parquet');
+
+    SELECT '@@BENCH_TAG query@@' AS step;
+    SELECT city, count(*) AS n, avg(amount) AS avg_amount, max(amount) AS max_amount
+    FROM read_parquet('s3://@S3_BUCKET@/data.parquet')
+    GROUP BY city ORDER BY n DESC;
+
+    SELECT '@@BENCH_TAG query@@' AS step;
+    SELECT city, count(*) AS n, avg(amount) AS avg_amount, max(amount) AS max_amount
+    FROM read_parquet('s3://@S3_BUCKET@/data.parquet')
+    GROUP BY city ORDER BY n DESC;
+
+    SELECT '@@BENCH_TAG query@@' AS step;
+    SELECT city, count(*) AS n, avg(amount) AS avg_amount, max(amount) AS max_amount
+    FROM read_parquet('s3://@S3_BUCKET@/data.parquet')
+    GROUP BY city ORDER BY n DESC;
+
+    SELECT '@@BENCH_TAG query@@' AS step;
+    SELECT city, count(*) AS n, avg(amount) AS avg_amount, max(amount) AS max_amount
+    FROM read_parquet('s3://@S3_BUCKET@/data.parquet')
+    GROUP BY city ORDER BY n DESC;
+
+    SELECT '@@BENCH_TAG query@@' AS step;
+    SELECT city, count(*) AS n, avg(amount) AS avg_amount, max(amount) AS max_amount
+    FROM read_parquet('s3://@S3_BUCKET@/data.parquet')
+    GROUP BY city ORDER BY n DESC;
+
+    SELECT '@@BENCH_TAG query@@' AS step;
+    SELECT city, count(*) AS n, avg(amount) AS avg_amount, max(amount) AS max_amount
+    FROM read_parquet('s3://@S3_BUCKET@/data.parquet')
+    GROUP BY city ORDER BY n DESC;
+
+    SELECT '@@BENCH_TAG query@@' AS step;
+    SELECT city, count(*) AS n, avg(amount) AS avg_amount, max(amount) AS max_amount
+    FROM read_parquet('s3://@S3_BUCKET@/data.parquet')
+    GROUP BY city ORDER BY n DESC;
+
+    SELECT '@@BENCH_TAG rowcount@@' AS step;
+    SELECT @ROW_COUNT@ AS generated_rows;
+
+    SELECT '@@BENCH_TAG done@@' AS step;
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: duckdb-bench
+  namespace: exp-duckdb-parquet
+spec:
+  backoffLimit: 2
+  template:
+    metadata:
+      labels:
+        app: duckdb-bench
+    spec:
+      restartPolicy: Never
+      initContainers:
+        # Render @TOKEN@ -> real values into the shared emptyDir. busybox has a shell
+        # and sed; the duckdb image (distroless) does not. ROW_COUNT defaults to
+        # 50,000,000 per the spec; override via the Job env if you want a smaller run.
+        - name: render-sql
+          image: busybox:1.37
+          envFrom:
+            - secretRef:
+                name: minio-creds
+          env:
+            - name: ROW_COUNT
+              value: "50000000"
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              # MinIO root creds double as the S3 key for the lab.
+              sed \
+                -e "s|@S3_KEY_ID@|${MINIO_ROOT_USER}|g" \
+                -e "s|@S3_SECRET@|${MINIO_ROOT_PASSWORD}|g" \
+                -e "s|@S3_ENDPOINT@|minio:9000|g" \
+                -e "s|@S3_USE_SSL@|false|g" \
+                -e "s|@S3_BUCKET@|bench|g" \
+                -e "s|@ROW_COUNT@|${ROW_COUNT}|g" \
+                /sql/bench.sql > /work/bench.sql
+              echo "rendered /work/bench.sql (ROW_COUNT=${ROW_COUNT})"
+          volumeMounts:
+            - name: sql
+              mountPath: /sql
+            - name: work
+              mountPath: /work
+      containers:
+        - name: duckdb
+          # Official DuckDB CLI image (distroless). Pin a current 1.x tag.
+          image: duckdb/duckdb:1.5.3
+          # image has NO entrypoint, so invoke the binary explicitly at /duckdb;
+          # then pass db + a final dot-command that runs and exits.
+          command: ["/duckdb"]
+          args: [":memory:", ".read /work/bench.sql"]
+          volumeMounts:
+            - name: work
+              mountPath: /work
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              memory: "2Gi"
+      volumes:
+        - name: sql
+          configMap:
+            name: duckdb-bench-sql
+        - name: work
+          emptyDir: {}

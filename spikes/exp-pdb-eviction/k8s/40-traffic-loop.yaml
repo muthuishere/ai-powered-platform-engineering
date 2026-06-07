@@ -1,0 +1,64 @@
+# In-cluster traffic generator. One pod hammers BOTH Services concurrently and
+# prints a tagged, timestamped line per request:
+#     <tag> <OK|FAIL> <epoch_seconds>
+# tag = "A" (with-pdb) or "B" (without-pdb). We parse this log after the run to
+# compute availability % and the failure window per variant. Pure stdlib so it
+# needs no network to install anything.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: traffic-loop
+  namespace: exp-pdb-eviction
+  labels:
+    app: traffic-loop
+    app.kubernetes.io/part-of: exp-pdb-eviction
+spec:
+  restartPolicy: Never
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: loop
+      image: python:3.12-slim
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+      env:
+        - name: REQ_INTERVAL
+          value: "0.1"
+      command: ["python3", "-c"]
+      args:
+        - |
+          import os, time, urllib.request, threading
+          interval = float(os.environ.get("REQ_INTERVAL", "0.1"))
+          targets = {"A": "http://app-with-pdb.exp-pdb-eviction.svc.cluster.local/",
+                     "B": "http://app-without-pdb.exp-pdb-eviction.svc.cluster.local/"}
+          lock = threading.Lock()
+          def emit(s):
+              with lock:
+                  print(s, flush=True)
+          def hit(tag, url):
+              while True:
+                  ts = time.time()
+                  try:
+                      r = urllib.request.urlopen(url, timeout=2)
+                      ok = (r.status == 200)
+                      r.read()
+                  except Exception:
+                      ok = False
+                  emit("%s %s %.3f" % (tag, "OK" if ok else "FAIL", ts))
+                  time.sleep(interval)
+          for tag, url in targets.items():
+              threading.Thread(target=hit, args=(tag, url), daemon=True).start()
+          while True:
+              time.sleep(3600)
+      resources:
+        requests:
+          cpu: 25m
+          memory: 32Mi
+        limits:
+          cpu: 200m
+          memory: 64Mi

@@ -1,0 +1,36 @@
+# L7 HTTP CiliumNetworkPolicy.
+#
+# Selects the SERVER pods. From pods labelled app=client, on TCP :80, allow ONLY
+# HTTP GET /public. Everything else to :80 (GET /admin, POST, other paths) is
+# denied at L7 by the node-local Envoy proxy, which returns HTTP 403 to the client.
+#
+# Two things to understand about Cilium L7 deny:
+#   * The TCP connection is ALLOWED (L3/L4 permit) — Envoy is inserted transparently,
+#     so a denied request returns "403 Access denied" rather than a connection reset.
+#     That is why the test asserts on HTTP 403, not on curl exit code 7 (refused).
+#   * Once ANY toPorts rule carries an http: block, the port becomes default-deny for
+#     HTTP: only the listed method+path pairs pass. /admin is denied implicitly.
+#
+# Requires Cilium to be the CNI (CiliumNetworkPolicy CRD). If the cluster still runs
+# Flannel, this CRD will not exist and run.sh records l7_* as null with a reason.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: server-l7-allow-public
+  namespace: exp-cilium-ebpf
+spec:
+  endpointSelector:
+    matchLabels:
+      app: server
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            app: client
+      toPorts:
+        - ports:
+            - port: "80"
+              protocol: TCP
+          rules:
+            http:
+              - method: "GET"
+                path: "/public"

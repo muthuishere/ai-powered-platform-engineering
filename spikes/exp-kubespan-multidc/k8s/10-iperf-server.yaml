@@ -1,0 +1,43 @@
+# iperf3 server — pinned to NODE_A (the control-plane box / "DC A").
+# run.sh sed-substitutes __NODE_A__ before apply.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: iperf-server
+  namespace: exp-kubespan
+  labels:
+    app: iperf-server
+spec:
+  nodeName: __NODE_A__
+  # Tolerate control-plane taint in case NODE_A is the control plane.
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
+  containers:
+    - name: iperf3
+      image: networkstatic/iperf3:latest
+      args: ["-s"]
+      ports:
+        - containerPort: 5201
+          protocol: TCP
+        - containerPort: 5201
+          protocol: UDP
+      resources:
+        requests: { cpu: "100m", memory: "64Mi" }
+        limits:   { cpu: "500m", memory: "128Mi" }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: iperf-server
+  namespace: exp-kubespan
+spec:
+  selector:
+    app: iperf-server
+  ports:
+    - name: iperf-tcp
+      port: 5201
+      targetPort: 5201
+      protocol: TCP
+  clusterIP: None   # headless: client dials the pod IP directly (true pod-to-pod)

@@ -1,0 +1,35 @@
+# Helm values for the SPIRE "helm-charts-hardened" chart (spiffe/spire).
+# Repo:  https://spiffe.github.io/helm-charts-hardened/
+# Chart: spiffe/spire (pinned in install-spire.sh)
+#
+# Out of the box this chart deploys the full stack:
+#   spire-server (StatefulSet) + spire-agent (DaemonSet) + spire-controller-manager
+#   + spiffe-csi-driver (so workloads mount the Workload API socket via a CSI volume,
+#     NOT a hostPath — the recommended, lower-risk path).
+#
+# We keep it deliberately minimal: single-replica server, in-memory-ish datastore
+# (the chart default SQLite on a PVC), and a FIXED controllerManager className so our
+# ClusterSPIFFEID resources bind deterministically (see k8s/30-*.yaml).
+global:
+  spire:
+    # Trust domain == the "root" of every SPIFFE ID we mint: spiffe://exp.spiffe/...
+    trustDomain: exp.spiffe
+    clusterName: exp-cluster
+    caSubject:
+      country: US
+      organization: exp-spiffe-spire
+      commonName: exp.spiffe
+
+# Server: keep it to one replica for a single-node-ish bench cluster.
+spire-server:
+  replicaCount: 1
+  controllerManager:
+    enabled: true
+    # Pin the class so our ClusterSPIFFEID `spec.className: spire` always matches.
+    # (Default would be "<namespace>-<release>" which is install-location dependent.)
+    className: spire
+
+# The SPIFFE CSI driver is what mounts the agent's Workload API UDS into workload pods
+# at the CSI volume's mountPath. Strongly recommended over hostPath mounts.
+spiffe-csi-driver:
+  enabled: true

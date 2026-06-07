@@ -1,0 +1,10 @@
+# Self-contained namespace for the DuckDB + Apache Iceberg spike. Everything this
+# experiment needs (object store, catalog, bench Job) lives here so runs don't
+# contend with other spikes.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: exp-duckdb-iceberg
+  labels:
+    app.kubernetes.io/part-of: data-spikes
+    spike: exp-duckdb-iceberg

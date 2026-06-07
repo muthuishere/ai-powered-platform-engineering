@@ -1,0 +1,52 @@
+# patches/kubespan.yaml — enable the Talos KubeSpan WireGuard full-mesh.
+#
+# Verified against Talos v1.11 docs (docs.siderolabs.com/talos/v1.11/networking/kubespan,
+# 2026-06). Apply to BOTH control-plane and worker config (the mesh is per-node).
+#
+# What this does:
+#   - machine.network.kubespan.enabled: true   -> node joins the WireGuard mesh.
+#       Each node generates a WireGuard keypair (a "KubeSpan identity"), advertises
+#       its public key + reachable endpoints, and auto-dials every other node.
+#   - cluster.discovery                          -> the control plane that lets nodes
+#       FIND each other across networks/DCs. KubeSpan needs it: peers learn each
+#       other's public keys + endpoints through discovery, NOT through static config.
+#
+# KubeSpan carries all mesh traffic over UDP/51820 (open this between the boxes).
+machine:
+  network:
+    kubespan:
+      enabled: true
+      # Advertise the pod/service CIDRs over the mesh so cross-node pod traffic
+      # is routed through the encrypted tunnels (this is what makes a CNI like
+      # the default work across DCs without its own overlay). Default is false;
+      # we turn it on because the whole point here is cross-DC pod-to-pod.
+      advertiseKubernetesNetworks: true
+      # SECURITY: if a peer's tunnel is down, do NOT fall back to plaintext.
+      # Keep traffic encrypted-or-dropped (safer default for spanning the public
+      # internet). Set true only if you accept plaintext fallback for that peer.
+      allowDownPeerBypass: false
+      # WireGuard MTU. Default 1420 = typical-1500 underlay minus WG overhead.
+      # On tunnelled/lower-MTU underlays set this to (UnderlyingMTU - 80).
+      mtu: 1420
+      filters:
+        # Which of a node's advertised endpoints peers may dial. 0.0.0.0/0 + ::/0
+        # = allow all (each box reaches the other over its public IP). Narrow this
+        # to specific prefixes to force a particular path (e.g. a private WG/VPC).
+        endpoints:
+          - 0.0.0.0/0
+          - "::/0"
+cluster:
+  discovery:
+    enabled: true
+    registries:
+      # Service registry = Sidero's hosted discovery service (discovery.talos.dev).
+      # It only ever sees data encrypted with the cluster trust bundle — it cannot
+      # read your endpoints/keys. This is what lets nodes in different DCs find
+      # each other without a shared L2 / static peer list.
+      service: {}
+      # Kubernetes registry stores discovery data in the cluster itself. It cannot
+      # bootstrap KubeSpan on its own (a new node has no kube access until it has
+      # joined the mesh), so for cross-DC we rely on the service registry. Leave
+      # it enabled (default) as a secondary; disable explicitly if you must:
+      # kubernetes:
+      #   disabled: true

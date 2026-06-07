@@ -1,0 +1,8 @@
+# Demo workload namespace. SPIRE itself installs into `spire-server` (see install-spire.sh);
+# the demo server/client/intruder pods live here in `exp-spiffe`.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: exp-spiffe
+  labels:
+    app.kubernetes.io/part-of: exp-spiffe-spire

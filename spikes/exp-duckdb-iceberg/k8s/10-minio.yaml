@@ -1,0 +1,103 @@
+# MinIO — S3-compatible object store. The DATA PLANE of the Iceberg lakehouse:
+# pyiceberg writes both the Parquet data AND the Iceberg metadata tree (metadata.json
+# + manifest lists + manifest files) here; DuckDB then reads them back over S3.
+#
+# Single-node, single-PVC — fine for the lab, NOT durable for anything real.
+#
+# Caveat carried into the book: MinIO community edition went maintenance-mode and the
+# repo was archived (~Feb 2026). Its S3 API is still ubiquitous, so it's a fair stand-in
+# for "some S3 endpoint"; Garage is the live OSS alternative (see exp-ducklake). We pin
+# a real CE image tag so the lab is reproducible.
+#
+# Ports: 9000 S3 API · 9001 console.
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: minio-creds
+  namespace: exp-duckdb-iceberg
+type: Opaque
+stringData:
+  # DEMO VALUES — regenerate for anything real. These are the S3 root creds; the
+  # bucket Job, the pyiceberg init, and the DuckDB read all consume them.
+  MINIO_ROOT_USER: "minioadmin"
+  MINIO_ROOT_PASSWORD: "minioadmin123"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio
+  namespace: exp-duckdb-iceberg
+  labels:
+    app: minio
+spec:
+  selector:
+    app: minio
+  ports:
+    - name: s3
+      port: 9000
+      targetPort: 9000
+    - name: console
+      port: 9001
+      targetPort: 9001
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: minio
+  namespace: exp-duckdb-iceberg
+spec:
+  serviceName: minio
+  replicas: 1
+  selector:
+    matchLabels:
+      app: minio
+  template:
+    metadata:
+      labels:
+        app: minio
+    spec:
+      containers:
+        - name: minio
+          # Pin a real CE tag for reproducibility.
+          image: minio/minio:RELEASE.2025-04-08T15-41-24Z
+          args: ["server", "/data", "--console-address", ":9001"]
+          env:
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: minio-creds
+                  key: MINIO_ROOT_USER
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: minio-creds
+                  key: MINIO_ROOT_PASSWORD
+          ports:
+            - containerPort: 9000
+              name: s3
+            - containerPort: 9001
+              name: console
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            httpGet:
+              path: /minio/health/ready
+              port: 9000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /minio/health/live
+              port: 9000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 5Gi

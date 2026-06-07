@@ -1,0 +1,104 @@
+# The demo application code, shipped as a ConfigMap so we need no custom image build
+# (the pods run the stock python:3.12-slim image and pip-install the SPIFFE libs).
+#
+# Verified-current libraries (PyPI, checked 2026-06):
+#   spiffe      0.2.9   (py-spiffe, HewlettPackard/py-spiffe) — X509Source, SpiffeId
+#   spiffe-tls  0.3.2   — spiffetls.listen / spiffetls.dial / authorize_id
+# Both require Python >= 3.10.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spiffe-demo-code
+  namespace: exp-spiffe
+data:
+  # ---- shared bootstrap: install pinned libs, then exec the role script -------
+  entrypoint.sh: |
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export SPIFFE_ENDPOINT_SOCKET="${SPIFFE_ENDPOINT_SOCKET:-unix:///spiffe-workload-api/spire-agent.sock}"
+    echo "[entrypoint] role=${ROLE} socket=${SPIFFE_ENDPOINT_SOCKET}"
+    pip install --quiet --no-cache-dir 'spiffe==0.2.9' 'spiffe-tls==0.3.2'
+    exec python3 "/app/${ROLE}.py"
+
+  # ---- server: fetch its own SVID, serve mTLS, only accept the client's ID -----
+  server.py: |
+    import os
+    from spiffe import X509Source, SpiffeId
+    from spiffetls import listen, ListenOptions
+    from spiffetls.mode import ServerTlsMode
+    from spiffetls.tlsconfig.authorize import authorize_id
+
+    TRUST = os.environ["TRUST_DOMAIN"]
+    CLIENT_ID = SpiffeId(f"spiffe://{TRUST}/ns/exp-spiffe/sa/spiffe-client/client")
+
+    # X509Source blocks until the Workload API hands us our X.509-SVID.
+    # This is the moment of *workload attestation*: the agent verified this pod
+    # (via the kubelet) matches a ClusterSPIFFEID before issuing anything.
+    source = X509Source()
+    print(f"[server] my SPIFFE ID: {source.svid.spiffe_id}", flush=True)
+
+    opts = ListenOptions(
+        tls_mode=ServerTlsMode.MTLS,
+        # Only the SPIFFE ID of the client is authorized — identity, not IP.
+        authorize_fn=authorize_id(CLIENT_ID),
+    )
+    server = listen("0.0.0.0:8443", source, opts)
+    print("[server] listening mTLS on :8443", flush=True)
+    while True:
+        conn, peer = server.accept()
+        try:
+            conn.do_handshake()
+            conn.recv(1024)
+            conn.send(b"hello from server, your identity checks out\n")
+            print(f"[server] served mTLS peer {peer}", flush=True)
+        except Exception as e:  # noqa: BLE001
+            print(f"[server] rejected connection: {e}", flush=True)
+        finally:
+            try:
+                conn.shutdown()
+            except Exception:  # noqa: BLE001
+                pass
+            conn.close()
+
+  # ---- client: fetch its SVID, mTLS-dial the server, only trust server's ID ----
+  client.py: |
+    import os, sys
+    from spiffe import X509Source, SpiffeId
+    from spiffetls import dial
+    from spiffetls.mode import ClientTlsMode
+    from spiffetls.tlsconfig.authorize import authorize_id
+
+    TRUST = os.environ["TRUST_DOMAIN"]
+    SERVER_ID = SpiffeId(f"spiffe://{TRUST}/ns/exp-spiffe/sa/spiffe-server/server")
+    SERVER_ADDR = os.environ.get("SERVER_ADDR", "spiffe-server.exp-spiffe.svc.cluster.local:8443")
+
+    source = X509Source()
+    print(f"[client] my SPIFFE ID: {source.svid.spiffe_id}", flush=True)
+
+    conn = dial(
+        SERVER_ADDR,
+        source,
+        tls_mode=ClientTlsMode.MTLS,
+        # Only trust a server presenting THIS SPIFFE ID — no CN/SAN/DNS games.
+        authorize_fn=authorize_id(SERVER_ID),
+    )
+    conn.send(b"ping\n")
+    reply = conn.recv(1024).decode(errors="replace").strip()
+    print(f"[client] mTLS OK, server said: {reply}", flush=True)
+    conn.close()
+    if not reply:
+        sys.exit(1)
+
+  # ---- intruder: NOT registered. X509Source() must fail (no SVID issued). ------
+  intruder.py: |
+    import sys
+    from spiffe import X509Source
+    try:
+        # No ClusterSPIFFEID matches this pod, so the agent refuses to issue an SVID.
+        # py-spiffe blocks/raises rather than handing back an identity.
+        source = X509Source(timeout_in_seconds=30)
+        print(f"[intruder] UNEXPECTED: got SVID {source.svid.spiffe_id}", flush=True)
+        sys.exit(1)  # security failure: an unregistered pod got an identity
+    except Exception as e:  # noqa: BLE001
+        print(f"[intruder] correctly DENIED an SVID: {type(e).__name__}: {e}", flush=True)
+        sys.exit(0)  # expected: unregistered workload rejected

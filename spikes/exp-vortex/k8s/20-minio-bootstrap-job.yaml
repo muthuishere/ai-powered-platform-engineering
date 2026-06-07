@@ -1,0 +1,36 @@
+# One-time: create the `bench` bucket the benchmark writes into. Idempotent —
+# `mc mb --ignore-existing` is a no-op if the bucket is already there.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: minio-bootstrap
+  namespace: exp-vortex
+spec:
+  backoffLimit: 5
+  template:
+    metadata:
+      labels:
+        app: minio-bootstrap
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: mc
+          image: quay.io/minio/mc:RELEASE.2025-04-03T17-07-56Z
+          env:
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef: { name: minio-creds, key: AWS_ACCESS_KEY_ID }
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef: { name: minio-creds, key: AWS_SECRET_ACCESS_KEY }
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              echo "waiting for minio..."
+              until mc alias set local http://minio:9000 \
+                    "$AWS_ACCESS_KEY_ID" "$AWS_SECRET_ACCESS_KEY" >/dev/null 2>&1; do
+                sleep 2
+              done
+              mc mb --ignore-existing local/bench
+              echo "bucket ready: local/bench"

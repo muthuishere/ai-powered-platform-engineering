@@ -1,0 +1,179 @@
+# Demo workloads. Each pod mounts the Workload API socket via the SPIFFE CSI driver
+# (driver: csi.spiffe.io) at /spiffe-workload-api — NOT a hostPath. The agent serves
+# the socket; the CSI driver wires it into the pod.
+#
+# Distinct ServiceAccounts make the SPIFFE IDs human-meaningful and let the
+# ClusterSPIFFEID template embed sa/<name>.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: spiffe-server
+  namespace: exp-spiffe
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: spiffe-client
+  namespace: exp-spiffe
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: spiffe-intruder
+  namespace: exp-spiffe
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spiffe-server
+  namespace: exp-spiffe
+  labels:
+    app: spiffe-demo
+    role: server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: spiffe-demo
+      role: server
+  template:
+    metadata:
+      labels:
+        app: spiffe-demo
+        role: server
+    spec:
+      serviceAccountName: spiffe-server
+      containers:
+        - name: server
+          image: python:3.12-slim
+          command: ["/bin/bash", "/app/entrypoint.sh"]
+          env:
+            - name: ROLE
+              value: server
+            - name: TRUST_DOMAIN
+              value: exp.spiffe
+            - name: SPIFFE_ENDPOINT_SOCKET
+              value: unix:///spiffe-workload-api/spire-agent.sock
+          ports:
+            - containerPort: 8443
+          volumeMounts:
+            - name: spiffe-workload-api
+              mountPath: /spiffe-workload-api
+              readOnly: true
+            - name: app-code
+              mountPath: /app
+      volumes:
+        - name: spiffe-workload-api
+          csi:
+            driver: csi.spiffe.io
+            readOnly: true
+        - name: app-code
+          configMap:
+            name: spiffe-demo-code
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: spiffe-server
+  namespace: exp-spiffe
+spec:
+  selector:
+    app: spiffe-demo
+    role: server
+  ports:
+    - port: 8443
+      targetPort: 8443
+---
+# Client runs as a Job: dial the server over mTLS once, succeed or fail.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: spiffe-client
+  namespace: exp-spiffe
+  labels:
+    app: spiffe-demo
+    role: client
+spec:
+  backoffLimit: 4
+  template:
+    metadata:
+      labels:
+        app: spiffe-demo
+        role: client
+    spec:
+      restartPolicy: Never
+      serviceAccountName: spiffe-client
+      containers:
+        - name: client
+          image: python:3.12-slim
+          command: ["/bin/bash", "/app/entrypoint.sh"]
+          env:
+            - name: ROLE
+              value: client
+            - name: TRUST_DOMAIN
+              value: exp.spiffe
+            - name: SERVER_ADDR
+              value: spiffe-server.exp-spiffe.svc.cluster.local:8443
+            - name: SPIFFE_ENDPOINT_SOCKET
+              value: unix:///spiffe-workload-api/spire-agent.sock
+          volumeMounts:
+            - name: spiffe-workload-api
+              mountPath: /spiffe-workload-api
+              readOnly: true
+            - name: app-code
+              mountPath: /app
+      volumes:
+        - name: spiffe-workload-api
+          csi:
+            driver: csi.spiffe.io
+            readOnly: true
+        - name: app-code
+          configMap:
+            name: spiffe-demo-code
+---
+# Intruder: same socket mount, but NO ClusterSPIFFEID matches it. The agent must
+# refuse to issue an SVID. Job succeeds (exit 0) only when the deny happens.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: spiffe-intruder
+  namespace: exp-spiffe
+  labels:
+    app: spiffe-demo
+    role: intruder
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app: spiffe-demo
+        role: intruder
+    spec:
+      restartPolicy: Never
+      serviceAccountName: spiffe-intruder
+      containers:
+        - name: intruder
+          image: python:3.12-slim
+          command: ["/bin/bash", "/app/entrypoint.sh"]
+          env:
+            - name: ROLE
+              value: intruder
+            - name: TRUST_DOMAIN
+              value: exp.spiffe
+            - name: SPIFFE_ENDPOINT_SOCKET
+              value: unix:///spiffe-workload-api/spire-agent.sock
+          volumeMounts:
+            - name: spiffe-workload-api
+              mountPath: /spiffe-workload-api
+              readOnly: true
+            - name: app-code
+              mountPath: /app
+      volumes:
+        - name: spiffe-workload-api
+          csi:
+            driver: csi.spiffe.io
+            readOnly: true
+        - name: app-code
+          configMap:
+            name: spiffe-demo-code

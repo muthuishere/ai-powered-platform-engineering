@@ -1,0 +1,71 @@
+# The StatefulSet baseline: a 3-instance CloudNativePG Cluster (1 primary + 2
+# streaming replicas), namespace exp-pg-ss.
+#
+# Everything here that the KubeVirt arm (exp-pg-ss-vs-kubevirt) must mirror is
+# PINNED: PostgreSQL version, storageClass, CPU, RAM, and the postgresql.conf
+# knobs. Change one of these and you are benchmarking the difference instead of
+# the runtime model — so change it in BOTH arms or not at all.
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: pg
+  namespace: exp-pg-ss
+spec:
+  instances: 3                       # 1 primary + 2 streaming replicas
+
+  # --- HELD CONSTANT: PostgreSQL version ---------------------------------------
+  # Same major+minor the VM arm installs. Pinned to a digest-stable upstream tag.
+  imageName: ghcr.io/cloudnative-pg/postgresql:17.5
+
+  # --- HELD CONSTANT: CPU + RAM ------------------------------------------------
+  # 1 vCPU / 2Gi. Keep requests == limits (Guaranteed QoS) so the VM arm, which
+  # has fixed sizing, is a fair match.
+  resources:
+    requests: {cpu: "1", memory: 2Gi}
+    limits:   {cpu: "1", memory: 2Gi}
+
+  # --- HELD CONSTANT: PostgreSQL config ----------------------------------------
+  # Mirror these EXACT values in the VM's postgresql.conf (KubeVirt arm).
+  postgresql:
+    parameters:
+      max_connections: "100"
+      shared_buffers: "512MB"
+      effective_cache_size: "1536MB"
+      wal_level: "replica"
+      fsync: "on"
+      synchronous_commit: "on"         # durable commits; identical in both arms
+      max_wal_size: "1GB"
+      checkpoint_completion_target: "0.9"
+
+  # --- HELD CONSTANT: storage --------------------------------------------------
+  # FIXED storageClass so storage is not the hidden variable between the arms.
+  # local-path is the OrbStack/k3d/Talos-lab default RWO provisioner. If your
+  # cluster names it differently, set BOTH arms to the same class and record it
+  # in RESULTS.md.
+  storage:
+    size: 5Gi
+    storageClassName: local-path
+
+  # Application-level failover we time in run.sh: CNPG promotes a replica and
+  # re-points the pg-rw Service. unsupervised = the operator drives it, no human.
+  primaryUpdateStrategy: unsupervised
+
+  # Bootstrap an empty database + a benchmark role (pgbench connects as this).
+  bootstrap:
+    initdb:
+      database: bench
+      owner: bench
+      secret:
+        name: pg-bench-cred
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: pg-bench-cred
+  namespace: exp-pg-ss
+type: kubernetes.io/basic-auth
+stringData:
+  # SPIKE ONLY — not a real secret. pgbench connects with these.
+  username: bench
+  password: bench-spike-123

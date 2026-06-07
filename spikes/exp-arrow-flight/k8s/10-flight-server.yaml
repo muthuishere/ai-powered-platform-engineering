@@ -1,0 +1,195 @@
+# Apache Arrow Flight server. Builds ONE synthetic Arrow table in memory at startup
+# and serves it over Flight DoGet as a stream of RecordBatches. No disk, no parsing
+# on the hot path: the wire format IS the in-memory format (zero-copy columnar).
+#
+# The server code ships as a ConfigMap so this directory is self-contained — a stock
+# python:3.12-slim image `pip install`s pyarrow at boot, then runs server.py. (There
+# is no official pyarrow image; vendoring the script keeps the spike hermetic.)
+#
+# Flight port: 8815 (grpc, the Arrow Flight convention).
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: flight-server-src
+  namespace: exp-arrow-flight
+data:
+  server.py: |
+    """Synthetic Arrow Flight server (pyarrow.flight, 2026 API).
+
+    Builds a columnar table of FLIGHT_ROWS rows once, holds it in memory, and
+    serves it via DoGet. Clients fetch with zero deserialization: Arrow on the
+    wire == Arrow in RAM. Also writes the same table to /out as Feather (Arrow
+    IPC) and Parquet so the client Job can compare on-disk size.
+    """
+    import os
+    import pathlib
+    import pyarrow as pa
+    import pyarrow.flight as flight
+    import pyarrow.feather as feather
+    import pyarrow.parquet as pq
+
+    ROWS = int(os.environ.get("FLIGHT_ROWS", "5000000"))
+    BATCH = int(os.environ.get("FLIGHT_BATCH_ROWS", "65536"))
+    LOCATION = os.environ.get("FLIGHT_LOCATION", "grpc://0.0.0.0:8815")
+    OUT = pathlib.Path(os.environ.get("FLIGHT_OUT", "/out"))
+    DATASET = "synthetic"
+
+    def build_table(n):
+        # A realistic-ish columnar mix: ids, a low-cardinality category, two
+        # measures, a timestamp. Cheap to generate, compresses differently in
+        # Feather vs Parquet -> a fair size comparison.
+        import pyarrow.compute as pc
+        ids = pa.array(range(n), type=pa.int64())
+        cats = ["chennai", "bengaluru", "mumbai", "delhi", "pune"]
+        city = pa.DictionaryArray.from_arrays(
+            pa.array([i % len(cats) for i in range(n)], type=pa.int32()),
+            pa.array(cats),
+        )
+        fare = pc.multiply(pc.cast(pc.add(pc.multiply(ids, 7), 13), pa.float64()),
+                           pa.scalar(0.001))
+        qty = pa.array([(i % 9) + 1 for i in range(n)], type=pa.int32())
+        ts = pa.array([1_700_000_000 + (i % 86400) for i in range(n)],
+                      type=pa.timestamp("s"))
+        return pa.table(
+            {"id": ids, "city": city, "fare": fare, "qty": qty, "booked_at": ts}
+        )
+
+    class SyntheticFlightServer(flight.FlightServerBase):
+        def __init__(self, location, table):
+            super().__init__(location)
+            self._location = location
+            self._table = table
+
+        def _info(self):
+            desc = flight.FlightDescriptor.for_path(DATASET.encode())
+            endpoints = [flight.FlightEndpoint(DATASET.encode(), [self._location])]
+            return flight.FlightInfo(
+                self._table.schema, desc, endpoints,
+                self._table.num_rows, self._table.nbytes,
+            )
+
+        def list_flights(self, context, criteria):
+            yield self._info()
+
+        def get_flight_info(self, context, descriptor):
+            return self._info()
+
+        def do_get(self, context, ticket):
+            # RecordBatchStream: all data already in memory; transfer is pure C++,
+            # no per-batch Python on the hot path. This is the zero-copy DoGet path.
+            return flight.RecordBatchStream(
+                self._table, options=pa.ipc.IpcWriteOptions(use_threads=True)
+            )
+
+    def main():
+        print(f"pyarrow {pa.__version__}: building {ROWS:,} rows...", flush=True)
+        table = build_table(ROWS)
+        print(f"in-memory table: {table.num_rows:,} rows, "
+              f"{table.nbytes:,} bytes ({table.nbytes/1e6:.1f} MB)", flush=True)
+
+        # Write Feather (Arrow IPC) + Parquet for the storage-size comparison.
+        OUT.mkdir(parents=True, exist_ok=True)
+        feather_path = OUT / "synthetic.feather"
+        parquet_path = OUT / "synthetic.parquet"
+        feather.write_feather(table, feather_path, compression="zstd")
+        pq.write_table(table, parquet_path, compression="zstd")
+        fbytes = feather_path.stat().st_size
+        pbytes = parquet_path.stat().st_size
+        print(f"feather(zstd): {fbytes:,} bytes  parquet(zstd): {pbytes:,} bytes",
+              flush=True)
+        # Stamp sizes where the client can read them over a shared emptyDir.
+        (OUT / "sizes.txt").write_text(
+            f"feather_bytes={fbytes}\nparquet_bytes={pbytes}\n"
+            f"in_memory_bytes={table.nbytes}\nrows={table.num_rows}\n"
+        )
+
+        server = SyntheticFlightServer(LOCATION, table)
+        print(f"serving Arrow Flight on {LOCATION} "
+              f"(batch={BATCH} rows) — ready", flush=True)
+        server.serve()
+
+    if __name__ == "__main__":
+        main()
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: flight-server
+  namespace: exp-arrow-flight
+  labels:
+    app: flight-server
+spec:
+  selector:
+    app: flight-server
+  ports:
+    - name: flight
+      port: 8815
+      targetPort: 8815
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flight-server
+  namespace: exp-arrow-flight
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: flight-server
+  template:
+    metadata:
+      labels:
+        app: flight-server
+    spec:
+      containers:
+        - name: flight-server
+          # Stock Python; pyarrow installed at boot from the pinned line.
+          image: python:3.12-slim
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              pip install --no-cache-dir --quiet "pyarrow==${PYARROW_VERSION}"
+              exec python /src/server.py
+          env:
+            - name: PYARROW_VERSION
+              value: "18.1.0"   # a 2024/2025 stable line; bump to taste
+            - name: FLIGHT_ROWS
+              value: "5000000"
+            - name: FLIGHT_BATCH_ROWS
+              value: "65536"
+            - name: FLIGHT_OUT
+              value: "/out"
+          ports:
+            - containerPort: 8815
+              name: flight
+          readinessProbe:
+            tcpSocket:
+              port: 8815
+            initialDelaySeconds: 20
+            periodSeconds: 5
+            failureThreshold: 30
+          livenessProbe:
+            tcpSocket:
+              port: 8815
+            initialDelaySeconds: 60
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "2"
+              memory: "2Gi"
+          volumeMounts:
+            - name: src
+              mountPath: /src
+            - name: out
+              mountPath: /out
+      volumes:
+        - name: src
+          configMap:
+            name: flight-server-src
+        - name: out
+          emptyDir: {}

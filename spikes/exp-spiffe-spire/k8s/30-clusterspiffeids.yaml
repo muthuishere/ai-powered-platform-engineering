@@ -1,0 +1,43 @@
+# Workload registration — the heart of SPIFFE/SPIRE.
+#
+# We do NOT register by IP, secret, or token. We register by *attestation*:
+# a ClusterSPIFFEID tells the SPIRE controller-manager "any pod matching this
+# selector, on an attested node, gets this SPIFFE ID". The agent then verifies
+# the pod's identity through the kubelet (workload attestation) before ever
+# handing it an X.509-SVID over the Workload API socket.
+#
+# className: spire  -> matches spire-server.controllerManager.className in 10-spire-values.yaml
+#
+# Note what is DELIBERATELY absent: there is no ClusterSPIFFEID for the
+# `intruder` pod. With no matching registration the agent refuses to issue it an
+# SVID, so its X509Source() init fails -> that is our "unregistered_rejected" proof.
+---
+apiVersion: spire.spiffe.io/v1beta1
+kind: ClusterSPIFFEID
+metadata:
+  name: exp-spiffe-server
+spec:
+  className: spire
+  spiffeIDTemplate: "spiffe://{{ .TrustDomain }}/ns/{{ .PodMeta.Namespace }}/sa/{{ .PodSpec.ServiceAccountName }}/server"
+  podSelector:
+    matchLabels:
+      app: spiffe-demo
+      role: server
+  namespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: exp-spiffe
+---
+apiVersion: spire.spiffe.io/v1beta1
+kind: ClusterSPIFFEID
+metadata:
+  name: exp-spiffe-client
+spec:
+  className: spire
+  spiffeIDTemplate: "spiffe://{{ .TrustDomain }}/ns/{{ .PodMeta.Namespace }}/sa/{{ .PodSpec.ServiceAccountName }}/client"
+  podSelector:
+    matchLabels:
+      app: spiffe-demo
+      role: client
+  namespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: exp-spiffe

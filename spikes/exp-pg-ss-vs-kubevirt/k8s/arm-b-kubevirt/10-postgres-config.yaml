@@ -1,0 +1,27 @@
+# Arm B — Postgres config for the KubeVirt VM.
+#
+# These knobs are the EXACT SAME values as Arm A's
+# Cluster.spec.postgresql.parameters (../arm-a-statefulset/10-cluster.yaml).
+# Change one → change it in BOTH arms, or you benchmark the config difference,
+# not the runtime model. (Kept here for documentation/diffing; the VM applies
+# the identical block inline via cloud-init in 20-virtualmachine.yaml.)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pg-vm-conf
+  namespace: exp-pg-kubevirt
+data:
+  postgresql.conf.append: |
+    # ---- HELD CONSTANT: must match ../arm-a-statefulset/10-cluster.yaml ----
+    listen_addresses = '*'
+    max_connections = 100
+    shared_buffers = 256MB
+    effective_cache_size = 768MB
+    wal_level = replica
+    fsync = on
+    synchronous_commit = on
+    max_wal_size = 1GB
+    checkpoint_completion_target = 0.9
+  pg_hba.append: |
+    # spike only — allow the bench role from the cluster network with a password.
+    host  bench  bench  0.0.0.0/0  scram-sha-256

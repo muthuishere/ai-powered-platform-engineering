@@ -1,0 +1,168 @@
+# The DuckLake benchmark, in-cluster. DuckDB is a stateless query runner: this Job
+# spins up, attaches the Postgres catalog + MinIO bucket, ingests a synthetic
+# dataset (timed), scans/aggregates it (timed), shows snapshots + time travel, and
+# emits markers run.sh parses into results.json. All durable state stays in
+# Postgres (metadata) + MinIO (Parquet) — the Job pod owns nothing.
+#
+# For MinIO the S3 access key id / secret ARE the root user / password, so we read
+# them straight from the minio-creds Secret — no separate key to mint or paste.
+#
+# lake.sql is shipped as a ConfigMap so this directory is self-contained. It mirrors
+# demo/lake.sql; the @VAR@ tokens are substituted from env by a sed step before
+# DuckDB sees the SQL (ATTACH / CREATE SECRET take literals, not expressions).
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ducklake-bench-sql
+  namespace: exp-ducklake
+data:
+  lake.sql: |
+    INSTALL ducklake; INSTALL httpfs; INSTALL postgres;
+    LOAD ducklake; LOAD httpfs; LOAD postgres;
+
+    CREATE OR REPLACE SECRET minio (
+        TYPE s3, KEY_ID '@S3_KEY_ID@', SECRET '@S3_SECRET@',
+        ENDPOINT '@S3_ENDPOINT@', URL_STYLE 'path', USE_SSL @S3_USE_SSL@
+    );
+
+    ATTACH 'ducklake:postgres:host=@PG_HOST@ port=@PG_PORT@ dbname=@PG_DB@ user=@PG_USER@ password=@PG_PASSWORD@'
+        AS lake (DATA_PATH 's3://@S3_BUCKET@/lake/');
+    USE lake;
+
+    CREATE TABLE IF NOT EXISTS events (
+        id BIGINT, user_id INTEGER, city VARCHAR,
+        amount DECIMAL(10,2), event_ts TIMESTAMP
+    );
+
+    SELECT '== ingest timing ==' AS step;
+    .timer on
+    INSERT INTO events
+    SELECT i, (i % 50000)::INTEGER,
+        ['chennai','bengaluru','mumbai','delhi','pune','hyderabad'][(i % 6) + 1],
+        round((i % 1000) + (i % 7) * 0.5, 2)::DECIMAL(10,2),
+        TIMESTAMP '2026-01-01 00:00:00' + (INTERVAL 1 SECOND * (i % 5184000))
+    FROM range(@ROW_COUNT@) t(i);
+    .timer off
+
+    INSERT INTO events
+    SELECT @ROW_COUNT@ + i, (i % 50000)::INTEGER, 'late-arrival',
+        99.99::DECIMAL(10,2), TIMESTAMP '2026-06-01 00:00:00'
+    FROM range(10000) t(i);
+
+    SELECT '== full scan (count) ==' AS step;
+    .timer on
+    SELECT count(*) AS total_rows FROM events;
+    .timer off
+
+    SELECT '== aggregation queries (timed x10) ==' AS step;
+    .timer on
+    SELECT city, count(*) c, sum(amount) rev, avg(amount) a FROM events GROUP BY city ORDER BY rev DESC;
+    SELECT city, count(*) c, sum(amount) rev, avg(amount) a FROM events GROUP BY city ORDER BY rev DESC;
+    SELECT city, count(*) c, sum(amount) rev, avg(amount) a FROM events GROUP BY city ORDER BY rev DESC;
+    SELECT city, count(*) c, sum(amount) rev, avg(amount) a FROM events GROUP BY city ORDER BY rev DESC;
+    SELECT city, count(*) c, sum(amount) rev, avg(amount) a FROM events GROUP BY city ORDER BY rev DESC;
+    SELECT city, count(*) c, sum(amount) rev, avg(amount) a FROM events GROUP BY city ORDER BY rev DESC;
+    SELECT city, count(*) c, sum(amount) rev, avg(amount) a FROM events GROUP BY city ORDER BY rev DESC;
+    SELECT city, count(*) c, sum(amount) rev, avg(amount) a FROM events GROUP BY city ORDER BY rev DESC;
+    SELECT city, count(*) c, sum(amount) rev, avg(amount) a FROM events GROUP BY city ORDER BY rev DESC;
+    SELECT city, count(*) c, sum(amount) rev, avg(amount) a FROM events GROUP BY city ORDER BY rev DESC;
+    .timer off
+
+    SELECT '== snapshots (from the SQL catalog) ==' AS step;
+    SELECT snapshot_id, snapshot_time, schema_version, changes
+    FROM ducklake_snapshots('lake') ORDER BY snapshot_id;
+
+    SELECT '== time travel AT (VERSION => 2) ==' AS step;
+    SELECT count(*) AS rows_at_v2 FROM events AT (VERSION => 2);
+    SELECT count(*) AS late_rows_at_v2 FROM events AT (VERSION => 2) WHERE city = 'late-arrival';
+
+    SELECT '== time travel AT (TIMESTAMP => now) ==' AS step;
+    SELECT count(*) AS rows_now FROM events AT (TIMESTAMP => now());
+
+    SELECT '== data files on S3 ==' AS step;
+    SELECT data_file_path, file_size_bytes
+    FROM ducklake_list_files('lake','events') ORDER BY data_file_path;
+
+    SELECT '== ON_DISK_BYTES marker ==' AS step;
+    SELECT 'ON_DISK_BYTES=' || coalesce(sum(file_size_bytes),0)::BIGINT AS marker
+    FROM ducklake_list_files('lake','events');
+
+    SELECT '== METADATA_IN_SQL marker ==' AS step;
+    SELECT 'CATALOG_FILE_ROWS=' || count(*)::BIGINT AS marker
+    FROM ducklake_list_files('lake','events');
+
+    SELECT '== done ==' AS step;
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ducklake-bench
+  namespace: exp-ducklake
+spec:
+  backoffLimit: 2
+  template:
+    metadata:
+      labels:
+        app: ducklake-bench
+    spec:
+      restartPolicy: Never
+      # Wait for Postgres before the query runner starts.
+      initContainers:
+        - name: wait-pg
+          image: postgres:17
+          command: ["/bin/sh", "-c"]
+          args:
+            - until pg_isready -h ducklake-pg -p 5432 -U ducklake; do sleep 2; done
+      containers:
+        - name: duckdb
+          # DuckDB CLI image. Pin a tag that ships DuckLake 1.0 (>= the 2026 line).
+          image: davidgasquez/duckdb:latest
+          command: ["/bin/sh", "-c"]
+          args:
+            # Render @VAR@ tokens from env, then pipe into an in-memory DuckDB.
+            - |
+              sed \
+                -e "s|@PG_HOST@|${PG_HOST}|g" \
+                -e "s|@PG_PORT@|${PG_PORT}|g" \
+                -e "s|@PG_DB@|${PG_DB}|g" \
+                -e "s|@PG_USER@|${PG_USER}|g" \
+                -e "s|@PG_PASSWORD@|${PG_PASSWORD}|g" \
+                -e "s|@S3_KEY_ID@|${S3_KEY_ID}|g" \
+                -e "s|@S3_SECRET@|${S3_SECRET}|g" \
+                -e "s|@S3_ENDPOINT@|${S3_ENDPOINT}|g" \
+                -e "s|@S3_USE_SSL@|${S3_USE_SSL}|g" \
+                -e "s|@S3_BUCKET@|${S3_BUCKET}|g" \
+                -e "s|@ROW_COUNT@|${ROW_COUNT}|g" \
+                /sql/lake.sql | duckdb :memory:
+          env:
+            - name: PG_HOST
+              value: "ducklake-pg"
+            - name: PG_PORT
+              value: "5432"
+            - name: PG_DB
+              valueFrom: { secretKeyRef: { name: ducklake-pg, key: POSTGRES_DB } }
+            - name: PG_USER
+              valueFrom: { secretKeyRef: { name: ducklake-pg, key: POSTGRES_USER } }
+            - name: PG_PASSWORD
+              valueFrom: { secretKeyRef: { name: ducklake-pg, key: POSTGRES_PASSWORD } }
+            # MinIO: the S3 access key id / secret ARE the root user / password.
+            - name: S3_KEY_ID
+              valueFrom: { secretKeyRef: { name: minio-creds, key: MINIO_ROOT_USER } }
+            - name: S3_SECRET
+              valueFrom: { secretKeyRef: { name: minio-creds, key: MINIO_ROOT_PASSWORD } }
+            - name: S3_ENDPOINT
+              value: "minio:9000"
+            - name: S3_USE_SSL
+              value: "false"
+            - name: S3_BUCKET
+              value: "ducklake"
+            - name: ROW_COUNT
+              value: "2000000"
+          volumeMounts:
+            - name: sql
+              mountPath: /sql
+      volumes:
+        - name: sql
+          configMap:
+            name: ducklake-bench-sql

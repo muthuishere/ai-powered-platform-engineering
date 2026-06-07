@@ -1,0 +1,81 @@
+# Variant B: the SAME app, WITHOUT any probes.
+#   No readinessProbe -> k8s assumes the pod is fine the moment the container
+#                        starts, so a SICK replica STAYS in the Service endpoints
+#                        and keeps receiving traffic (high bad-request count).
+#   No livenessProbe  -> k8s never restarts the sick container; it never
+#                        self-heals. This is the world where teams reach for the
+#                        "delete and re-add everything" reflex.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app-without-probes
+  namespace: exp-probe-failure
+  labels:
+    app: app-without-probes
+    variant: without-probes
+    app.kubernetes.io/part-of: exp-probe-failure
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: app-without-probes
+  template:
+    metadata:
+      labels:
+        app: app-without-probes
+        variant: without-probes
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: app
+          image: python:3.12-slim
+          command: ["python3", "/app/app.py"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: PORT
+              value: "8080"
+          ports:
+            - name: http
+              containerPort: 8080
+          # NO readinessProbe, NO livenessProbe — that is the whole point.
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 64Mi
+          volumeMounts:
+            - name: app
+              mountPath: /app
+      volumes:
+        - name: app
+          configMap:
+            name: probe-app
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: app-without-probes
+  namespace: exp-probe-failure
+  labels:
+    app: app-without-probes
+    app.kubernetes.io/part-of: exp-probe-failure
+spec:
+  selector:
+    app: app-without-probes
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

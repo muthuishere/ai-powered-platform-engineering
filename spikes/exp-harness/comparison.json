@@ -1,0 +1,132 @@
+{
+  "generated_at": "2026-06-07T10:35:39Z",
+  "spike_count": 9,
+  "ran": [
+    "exp-arrow-flight",
+    "exp-chdb-parquet",
+    "exp-duckdb-iceberg",
+    "exp-duckdb-parquet",
+    "exp-vortex"
+  ],
+  "not_run": [
+    "exp-ducklake",
+    "exp-mochallama-minio-operator",
+    "exp-pg-ss-vs-kubevirt",
+    "exp-pg-statefulset"
+  ],
+  "spikes": {
+    "exp-duckdb-parquet": {
+      "status": "ok",
+      "reason": null,
+      "ran_at": "2026-06-07T09:54:50Z",
+      "cluster": "admin@cherry-bench",
+      "notes": "DuckDB 1.5.3 over pure Parquet (zstd) on MinIO, single-node lab.",
+      "metrics": {
+        "ingest_s": 15.94,
+        "scan_rows_per_s": 8000,
+        "query_p50_ms": 189.0,
+        "query_p95_ms": 237.0,
+        "on_disk_bytes": 92966955,
+        "compression_ratio": 7.598
+      }
+    },
+    "exp-chdb-parquet": {
+      "status": "ok",
+      "reason": null,
+      "ran_at": "2026-06-07T10:22:38Z",
+      "cluster": "admin@cherry-bench",
+      "notes": "chDB 3.6.0 (in-process ClickHouse) over pure Parquet (zstd) on MinIO, single-node lab. Same dataset shape as exp-duckdb-parquet for comparability.",
+      "metrics": {
+        "ingest_s": 28.7331,
+        "scan_rows_per_s": 52926855,
+        "query_p50_ms": 2141.7,
+        "query_p95_ms": 2530.8,
+        "on_disk_bytes": 338044922,
+        "compression_ratio": 2.08
+      }
+    },
+    "exp-duckdb-iceberg": {
+      "status": "ok",
+      "reason": null,
+      "ran_at": "2026-06-07T09:58:29Z",
+      "cluster": "admin@cherry-bench",
+      "notes": "DuckDB 1.5.3 reads an Iceberg table created by pyiceberg 0.9.1 (SqlCatalog/SQLite) on MinIO; writes go through pyiceberg because DuckDB's Iceberg write path targets REST catalogs. Lab numbers are modest \u2014 comparisons matter, not absolutes. compression_ratio is null: no raw-vs-Parquet baseline measured in this spike.",
+      "metrics": {
+        "ingest_s": 10.4492,
+        "scan_rows_per_s": 17092049,
+        "query_p50_ms": 5.148,
+        "query_p95_ms": 6.75,
+        "on_disk_bytes": 0,
+        "compression_ratio": null,
+        "time_travel_ms": 5.036
+      }
+    },
+    "exp-ducklake": {
+      "status": "not-run",
+      "reason": "results.json absent (spike not yet run)",
+      "ran_at": null,
+      "cluster": null,
+      "notes": null,
+      "metrics": {}
+    },
+    "exp-vortex": {
+      "status": "ok",
+      "reason": null,
+      "ran_at": "2026-06-07T09:59:22.399662+00:00",
+      "cluster": "cherry-bench",
+      "notes": "vortex-data 0.74.0 vs pyarrow parquet(zstd); both round-tripped through MinIO.",
+      "metrics": {
+        "ingest_s": 1.9268,
+        "scan_rows_per_s": 30622221,
+        "query_p50_ms": null,
+        "query_p95_ms": null,
+        "on_disk_bytes": 23416452,
+        "compression_ratio": 10.1782
+      }
+    },
+    "exp-arrow-flight": {
+      "status": "ok",
+      "reason": null,
+      "ran_at": "2026-06-07T09:59:56Z",
+      "cluster": "cherry-bench",
+      "notes": "measured in-cluster over Arrow Flight DoGet against the flight-server Service",
+      "metrics": {
+        "scan_rows_per_s": 34758070,
+        "query_p50_ms": 149.39,
+        "query_p95_ms": 160.856,
+        "query_min_ms": 143.851,
+        "query_mean_ms": 150.041,
+        "in_memory_bytes": 160000051,
+        "feather_bytes": 17732986,
+        "parquet_bytes": 20507074,
+        "on_disk_bytes": 17732986,
+        "rows": 5000000,
+        "iters": 20
+      }
+    },
+    "exp-pg-statefulset": {
+      "status": "not-run",
+      "reason": "results.json absent (spike not yet run)",
+      "ran_at": null,
+      "cluster": null,
+      "notes": null,
+      "metrics": {}
+    },
+    "exp-pg-ss-vs-kubevirt": {
+      "status": "not-run",
+      "reason": "results.json absent (spike not yet run)",
+      "ran_at": null,
+      "cluster": null,
+      "notes": null,
+      "metrics": {}
+    },
+    "exp-mochallama-minio-operator": {
+      "status": "not-run",
+      "reason": "results.json absent (spike not yet run)",
+      "ran_at": null,
+      "cluster": null,
+      "notes": null,
+      "metrics": {}
+    }
+  }
+}
