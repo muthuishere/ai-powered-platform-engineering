@@ -1,0 +1,23 @@
+# iperf3 client — pinned to NODE_B (the worker box / "DC B"), the opposite side
+# of the mesh from the server. run.sh sed-substitutes __NODE_B__ before apply.
+# Sleeps so run.sh can exec ping/iperf3 against the server pod IP on demand.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: iperf-client
+  namespace: exp-kubespan
+  labels:
+    app: iperf-client
+spec:
+  nodeName: __NODE_B__
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
+  containers:
+    - name: iperf3
+      image: networkstatic/iperf3:latest
+      command: ["sleep", "infinity"]
+      resources:
+        requests: { cpu: "100m", memory: "64Mi" }
+        limits:   { cpu: "500m", memory: "128Mi" }

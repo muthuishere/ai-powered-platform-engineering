@@ -1,0 +1,96 @@
+# Demo app for the Cilium L7 + Hubble spike.
+#
+#   server  — nginx serving two distinct HTTP paths:
+#               GET /public  -> 200  (the L7 policy will ALLOW this)
+#               GET /admin   -> 200 at the app layer, but the L7 CiliumNetworkPolicy
+#                               will DENY it -> client sees HTTP 403 from Envoy.
+#   client  — a long-lived curl/busybox pod we exec into to drive requests and
+#             generate pod-to-pod traffic for the throughput loop + Hubble flows.
+#
+# Both run in namespace exp-cilium-ebpf. Identity is by label (app=server / app=client),
+# which is what the CiliumNetworkPolicy selects on (Cilium identity == pod labels).
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: server-content
+  namespace: exp-cilium-ebpf
+data:
+  # nginx config: serve /public and /admin as plain 200s so the ONLY thing that
+  # blocks /admin is the L7 network policy (Envoy), not the app.
+  default.conf: |
+    server {
+      listen 80;
+      location = /public { return 200 "public-ok\n"; }
+      location = /admin  { return 200 "admin-ok\n"; }
+      location = /       { return 200 "root-ok\n"; }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: server
+  namespace: exp-cilium-ebpf
+  labels: { app: server }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: server }
+  template:
+    metadata:
+      labels: { app: server }
+    spec:
+      containers:
+        - name: nginx
+          # Pinned digest-free but versioned tag; nginx is multi-arch (works on arm64 lab).
+          image: nginx:1.27-alpine
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            - { name: conf, mountPath: /etc/nginx/conf.d }
+          readinessProbe:
+            httpGet: { path: /public, port: 80 }
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          resources:
+            requests: { cpu: "50m", memory: "32Mi" }
+            limits:   { cpu: "250m", memory: "128Mi" }
+      volumes:
+        - name: conf
+          configMap: { name: server-content }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: server
+  namespace: exp-cilium-ebpf
+  labels: { app: server }
+spec:
+  selector: { app: server }
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: client
+  namespace: exp-cilium-ebpf
+  labels: { app: client }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: client }
+  template:
+    metadata:
+      labels: { app: client }
+    spec:
+      containers:
+        - name: curl
+          # curlimages/curl is multi-arch; sleeps forever so we can exec into it.
+          image: curlimages/curl:8.11.1
+          command: ["sleep", "infinity"]
+          resources:
+            requests: { cpu: "50m", memory: "32Mi" }
+            limits:   { cpu: "250m", memory: "128Mi" }

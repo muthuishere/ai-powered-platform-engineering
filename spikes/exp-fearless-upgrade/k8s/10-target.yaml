@@ -1,0 +1,72 @@
+# The always-on TARGET workload the probe hits across the upgrade.
+#
+# A tiny static web server (Deployment) behind a ClusterIP Service. We want it to
+# survive a worker reboot if the cluster has spare capacity, and we want the probe
+# to SEE any window where the Service has no ready backing pod. So:
+#   - 2 replicas (so a multi-worker cluster could keep one serving while the other
+#     drains/reboots — on a 1-worker lab both land on the same node, which is the
+#     honest worst case we measure).
+#   - a readiness probe so the Service endpoints reflect real availability.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: probe-target
+  namespace: exp-upgrade
+  labels:
+    app: probe-target
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: probe-target
+  template:
+    metadata:
+      labels:
+        app: probe-target
+    spec:
+      # Spread across nodes when more than one is schedulable; on a 1-worker lab
+      # this is a soft hint that simply has no effect (both land together).
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: probe-target
+      containers:
+        - name: web
+          # registry.k8s.io static-server: serves HTTP 200 on :80, no external pull
+          # from Docker Hub (avoids rate limits on a fresh lab).
+          image: registry.k8s.io/e2e-test-images/agnhost:2.53
+          args: ["netexec", "--http-port=80"]
+          ports:
+            - containerPort: 80
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 80
+            periodSeconds: 1
+            timeoutSeconds: 1
+            failureThreshold: 1
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: probe-target
+  namespace: exp-upgrade
+  labels:
+    app: probe-target
+spec:
+  selector:
+    app: probe-target
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80

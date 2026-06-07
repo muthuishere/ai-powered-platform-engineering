@@ -1,0 +1,53 @@
+# In-cluster traffic generator. Hits BOTH Services every round and prints a
+# tagged, timestamped line per request:  "<A|B> <OK|FAIL> <epoch.ns> <httpcode>".
+# run.sh parses this pod's log to compute the metrics. The loop never exits on
+# its own; run.sh deletes the pod at teardown. REQ_INTERVAL is read from the env
+# (defaulted here) so this manifest stays static and dry-run-validatable.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: traffic-loop
+  namespace: exp-probe-failure
+  labels:
+    app: traffic-loop
+    app.kubernetes.io/part-of: exp-probe-failure
+spec:
+  restartPolicy: Never
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: traffic-loop
+      image: curlimages/curl:8.11.1
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+      env:
+        - name: REQ_INTERVAL
+          value: "0.2"
+      command: ["/bin/sh", "-c"]
+      args:
+        - |
+          A="http://app-with-probes.exp-probe-failure.svc/"
+          B="http://app-without-probes.exp-probe-failure.svc/"
+          hit() {
+            tag="$1"; url="$2"
+            code=$(curl -s -o /dev/null -m 2 -w "%{http_code}" "$url" 2>/dev/null || echo "000")
+            ts=$(date +%s.%N)
+            if [ "$code" = "200" ]; then echo "$tag OK $ts $code"; else echo "$tag FAIL $ts $code"; fi
+          }
+          while true; do
+            hit A "$A"
+            hit B "$B"
+            sleep "${REQ_INTERVAL}"
+          done
+      resources:
+        requests:
+          cpu: 25m
+          memory: 16Mi
+        limits:
+          cpu: 200m
+          memory: 32Mi

@@ -1,0 +1,38 @@
+# One-time bucket creation. MinIO serves S3 the moment it's up, but the bench
+# bucket has to exist before DuckDB can COPY into it. This Job waits for MinIO,
+# points `mc` at it, and makes the bucket idempotently (mc mb --ignore-existing).
+#
+# Re-running is safe: --ignore-existing makes a present bucket a no-op.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: minio-make-bucket
+  namespace: exp-duckdb-parquet
+spec:
+  backoffLimit: 5
+  template:
+    metadata:
+      labels:
+        app: minio-make-bucket
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: mc
+          # mc community image; last published 2025, same story as the server.
+          image: minio/mc:RELEASE.2025-05-21T01-59-54Z
+          envFrom:
+            - secretRef:
+                name: minio-creds
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              echo "waiting for minio S3 endpoint..."
+              until mc alias set bench "http://minio:9000" \
+                    "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null 2>&1; do
+                sleep 2
+              done
+              echo "minio reachable; ensuring bucket 'bench' exists..."
+              mc mb --ignore-existing bench/bench
+              mc ls bench/
+              echo "bucket ready: s3://bench/"
